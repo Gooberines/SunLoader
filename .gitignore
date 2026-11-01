@@ -1,0 +1,12 @@
+# Build output
+build/
+dist/
+bin/
+obj/
+mod/Installer/payload/
+
+# Editor / tool settings
+.claude/
+.vs/
+.vscode/
+*.user

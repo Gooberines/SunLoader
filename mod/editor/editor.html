@@ -1,0 +1,639 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>JSB Boss Editor</title>
+<style>
+  :root {
+    --bg: #0b0b10; --panel: #15151d; --panel2: #1d1d28; --line: #2c2c3a;
+    --text: #e9e9f2; --dim: #8a8aa0; --pink: #ff2b6e; --pink-dim: #ff2b6e55;
+    --cyan: #2be8ff; --yellow: #ffd02b;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
+    font: 13px/1.35 system-ui, "Segoe UI", sans-serif; overflow: hidden; }
+  button, input, select { font: inherit; color: var(--text); background: var(--panel2);
+    border: 1px solid var(--line); border-radius: 4px; padding: 3px 7px; }
+  button { cursor: pointer; }
+  button:hover { border-color: var(--pink); }
+  button.primary { background: var(--pink); border-color: var(--pink); color: #fff; font-weight: 600; }
+  input[type=number] { width: 70px; }
+  label { color: var(--dim); }
+  #app { display: grid; height: 100vh;
+    grid-template-columns: 220px 1fr 270px; grid-template-rows: auto 1fr 300px; }
+  #toolbar { grid-column: 1 / 4; display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+    padding: 6px 10px; background: var(--panel); border-bottom: 1px solid var(--line); }
+  #toolbar .sep { width: 1px; height: 20px; background: var(--line); }
+  #toolbar h1 { font-size: 14px; margin: 0 6px 0 0; color: var(--pink); letter-spacing: .5px; }
+  #palette { grid-row: 2 / 4; background: var(--panel); border-right: 1px solid var(--line);
+    display: flex; flex-direction: column; min-height: 0; }
+  #palette input { margin: 8px; }
+  #types { overflow-y: auto; flex: 1; padding: 0 4px 8px; }
+  #types h3 { font-size: 11px; text-transform: uppercase; color: var(--dim); margin: 10px 6px 4px; letter-spacing: .5px; }
+  .type { padding: 3px 8px; border-radius: 3px; cursor: pointer; display: flex; justify-content: space-between; gap: 6px; }
+  .type:hover { background: var(--panel2); }
+  .type.on { background: var(--pink); color: #fff; }
+  .type small { color: var(--dim); }
+  .type.on small { color: #fff; }
+  #stageWrap { position: relative; display: flex; align-items: center; justify-content: center; min-width: 0; min-height: 0; padding: 10px; }
+  #stage { background: #000; box-shadow: 0 0 0 1px var(--line); cursor: crosshair; }
+  #stageHint { position: absolute; bottom: 4px; left: 0; right: 0; text-align: center; color: var(--dim); font-size: 11px; pointer-events: none; }
+  #inspector { grid-row: 2 / 4; grid-column: 3; background: var(--panel); border-left: 1px solid var(--line); overflow-y: auto; padding: 10px; }
+  #inspector h2 { font-size: 13px; margin: 0 0 8px; }
+  .row { display: grid; grid-template-columns: 95px 1fr; gap: 6px; align-items: center; margin-bottom: 5px; }
+  .row input, .row select { width: 100%; }
+  .row input.default { color: var(--dim); }
+  .box { border: 1px solid var(--line); border-radius: 6px; padding: 8px; margin: 10px 0; }
+  .box h4 { margin: 0 0 6px; font-size: 12px; color: var(--dim); }
+  .btns { display: flex; gap: 6px; flex-wrap: wrap; }
+  #timelineWrap { grid-column: 2; position: relative; border-top: 1px solid var(--line); min-width: 0; }
+  #timeline { display: block; width: 100%; height: 100%; }
+  #status { color: var(--dim); margin-left: auto; }
+  .help { color: var(--dim); font-size: 12px; }
+  .help b { color: var(--text); font-weight: 600; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="toolbar">
+    <h1>BOSS EDITOR</h1>
+    <label>Level <input id="level" style="width:150px" title="Must match the level's name, e.g. DEADLOCKED"></label>
+    <button id="newBtn">New</button>
+    <button id="openBtn">Open…</button>
+    <button id="saveBtn" class="primary">Save</button>
+    <input id="openFile" type="file" accept=".json" hidden>
+    <span class="sep"></span>
+    <button id="playBtn" title="Space">▶ Play</button>
+    <span id="clock">0:00.000</span>
+    <button id="musicBtn" title="Load the song to hear it while you edit">Music…</button>
+    <input id="musicFile" type="file" accept="audio/*" hidden>
+    <span class="sep"></span>
+    <label>BPM <input id="bpm" type="number" min="20" max="400" step="0.01"></label>
+    <label>Offset ms <input id="offset" type="number" step="1"></label>
+    <label>Snap <select id="snap">
+      <option value="1">1 beat</option><option value="0.5">1/2</option><option value="0.25" selected>1/4</option>
+      <option value="0.125">1/8</option><option value="0">off</option></select></label>
+    <span id="status"></span>
+  </div>
+
+  <div id="palette">
+    <input id="search" placeholder="Search attacks…">
+    <div id="types"></div>
+  </div>
+
+  <div id="stageWrap">
+    <canvas id="stage"></canvas>
+    <div id="stageHint">Click to place the selected attack here · drag to move it</div>
+  </div>
+
+  <div id="inspector"></div>
+
+  <div id="timelineWrap"><canvas id="timeline"></canvas></div>
+</div>
+
+<script>
+// Filled in by build.ps1 from the mod's attack_types.json / attack_types_seen.json.
+const CATALOG = /*CATALOG*/null;
+const SEEN = /*SEEN*/null;
+
+const W = 1280, H = 720;                // game coordinates used by x/y
+const BUILT_IN = new Set(['timeline', 'pos']);
+const types = new Map();                // type -> {warningDefault, usesPosition, params:{key:default}}
+for (const t of (CATALOG?.attackTypes ?? [])) types.set(t.type, t);
+const seenTypes = Object.keys(SEEN?.attackTypes ?? {});
+
+// ---------- state ----------
+let boss = blank();
+let selected = new Set();               // spawn ids
+let tool = types.has('Beam') ? 'Beam' : [...types.keys()][1];
+let playhead = 0, playing = false, playStart = 0, playFrom = 0;
+let zoom = 0.12;                        // px per ms
+let scrollMs = -500;
+let undoStack = [], redoStack = [];
+let clipboard = [];
+let saveHandle = null;
+let nextId = 1;
+const audio = new Audio();
+
+function blank() {
+  return { level: 'DEADLOCKED', bpm: 120, offset: 0, spawns: [] };
+}
+
+const $ = id => document.getElementById(id);
+const beatMs = () => 60000 / (boss.bpm || 120);
+function snap(ms) {
+  const step = +$('snap').value * beatMs();
+  if (!step) return Math.round(ms);
+  return Math.round((ms - boss.offset) / step) * step + boss.offset;
+}
+const fmt = ms => { const s = Math.max(0, ms) / 1000; return `${Math.floor(s / 60)}:${(s % 60).toFixed(3).padStart(6, '0')}`; };
+const byId = id => boss.spawns.find(s => s.id === id);
+const sel = () => boss.spawns.filter(s => selected.has(s.id));
+function status(msg) { $('status').textContent = msg; }
+
+function makeSpawn(type, time, x, y) {
+  const t = types.get(type);
+  const s = { id: nextId++, type, time: Math.round(time), warning: t?.warningDefault ?? 0, outro: 0, params: {} };
+  if (!t || t.usesPosition) { s.x = Math.round(x ?? W / 2); s.y = Math.round(y ?? H / 2); }
+  return s;
+}
+
+// ---------- undo ----------
+function snapshot() {
+  undoStack.push(JSON.stringify(boss));
+  if (undoStack.length > 200) undoStack.shift();
+  redoStack = [];
+}
+function restore(json) {
+  boss = JSON.parse(json);
+  nextId = Math.max(0, ...boss.spawns.map(s => s.id)) + 1;
+  selected = new Set([...selected].filter(id => byId(id)));
+  syncInputs(); redraw();
+}
+function undo() { if (!undoStack.length) return; redoStack.push(JSON.stringify(boss)); restore(undoStack.pop()); }
+function redo() { if (!redoStack.length) return; undoStack.push(JSON.stringify(boss)); restore(redoStack.pop()); }
+
+// ---------- file format (what the mod reads) ----------
+function toFile() {
+  const spawns = [...boss.spawns].sort((a, b) => a.time - b.time).map(s => {
+    const o = { type: s.type, time: s.time, warning: s.warning, outro: s.outro };
+    if (s.x !== undefined) { o.x = s.x; o.y = s.y; }
+    if (Object.keys(s.params).length) o.params = { ...s.params };
+    return o;
+  });
+  return { level: boss.level, editor: { bpm: boss.bpm, offset: boss.offset }, layers: [{ layer: 0, spawns }] };
+}
+function fromFile(json) {
+  const b = blank();
+  b.level = json.level ?? b.level;
+  b.bpm = json.editor?.bpm ?? b.bpm;
+  b.offset = json.editor?.offset ?? 0;
+  nextId = 1;
+  for (const layer of json.layers ?? [])
+    for (const s of layer.spawns ?? []) {
+      if (!s.type || s.error) continue;
+      const params = {};
+      for (const [k, v] of Object.entries(s.params ?? {}))
+        if (!BUILT_IN.has(k) && v !== null) params[k] = String(v);
+      const spawn = { id: nextId++, type: s.type, time: s.time ?? 0, warning: s.warning ?? 0, outro: s.outro ?? 0, params };
+      if (s.x !== undefined) { spawn.x = s.x; spawn.y = s.y ?? H / 2; }
+      b.spawns.push(spawn);
+    }
+  return b;
+}
+
+async function save() {
+  const text = JSON.stringify(toFile(), null, 2);
+  const name = `${boss.level}.json`;
+  try {
+    if (window.showSaveFilePicker) {
+      if (!saveHandle || saveHandle.name !== name)
+        saveHandle = await showSaveFilePicker({ suggestedName: name, types: [{ description: 'Boss file', accept: { 'application/json': ['.json'] } }] });
+      const w = await saveHandle.createWritable();
+      await w.write(text); await w.close();
+      status(`Saved ${saveHandle.name} · ${boss.spawns.length} attacks`);
+      return;
+    }
+  } catch (e) {
+    if (e.name === 'AbortError') return;
+    console.warn(e);
+  }
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
+  a.download = name; a.click();
+  status(`Downloaded ${name} — move it into BepInEx\\SunLoader`);
+}
+
+function open(file) {
+  file.text().then(t => {
+    snapshot();
+    boss = fromFile(JSON.parse(t));
+    selected.clear(); saveHandle = null;
+    syncInputs(); fitAll(); redraw();
+    status(`Opened ${file.name} · ${boss.spawns.length} attacks`);
+  }).catch(e => status('Could not open: ' + e.message));
+}
+
+// ---------- palette ----------
+function renderPalette() {
+  const q = $('search').value.trim().toLowerCase();
+  const match = t => !q || t.toLowerCase().includes(q);
+  const item = t => {
+    const n = Object.keys(types.get(t)?.params ?? {}).length;
+    return `<div class="type${t === tool ? ' on' : ''}" data-type="${t}"><span>${t}</span><small>${n || ''}</small></div>`;
+  };
+  const used = seenTypes.filter(t => types.has(t) && match(t));
+  const all = [...types.keys()].filter(t => !seenTypes.includes(t) && match(t)).sort();
+  $('types').innerHTML =
+    (used.length ? `<h3>Used in dumped levels</h3>${used.map(item).join('')}` : '') +
+    `<h3>All attacks (${all.length})</h3>${all.map(item).join('')}` +
+    (types.size ? '' : '<p class="help">No attack list built in. Run build.ps1 after playing a level with the mod.</p>');
+}
+$('types').addEventListener('click', e => {
+  const el = e.target.closest('.type'); if (!el) return;
+  tool = el.dataset.type; renderPalette();
+  if (selected.size) {               // retype the selection
+    snapshot();
+    for (const s of sel()) { s.type = tool; s.params = {}; if (types.get(tool)?.usesPosition && s.x === undefined) { s.x = W / 2; s.y = H / 2; } }
+    redraw();
+  }
+});
+$('search').addEventListener('input', renderPalette);
+
+// ---------- inspector ----------
+function renderInspector() {
+  const list = sel();
+  const el = $('inspector');
+  if (!list.length) {
+    el.innerHTML = `<h2>${boss.spawns.length} attacks</h2>
+      <p class="help"><b>Place:</b> pick an attack on the left, then click the timeline or the stage.<br>
+      <b>Select:</b> click; shift-click adds; drag on empty timeline to box-select.<br>
+      <b>Move:</b> drag on the timeline (time) or the stage (position).<br>
+      <b>Keys:</b> Space play · Del delete · Ctrl+C / Ctrl+V paste at playhead · Ctrl+D duplicate 1 beat later · Ctrl+Z / Ctrl+Y · Ctrl+S save.<br>
+      <b>Zoom:</b> Ctrl+wheel on the timeline. <b>Scroll:</b> wheel.</p>
+      <p class="help">Save as <b>&lt;level name&gt;.json</b> in <b>BepInEx\\SunLoader</b>. That level then plays your boss.
+      Times are in milliseconds from the start of the song. The screen is 1280×720.</p>`;
+    return;
+  }
+  const one = list.length === 1 ? list[0] : null;
+  let html = `<h2>${one ? one.type : list.length + ' attacks selected'}</h2>`;
+  if (one) {
+    const t = types.get(one.type);
+    html += field('time', 'Time (ms)', one.time) + field('warning', 'Warning (ms)', one.warning) + field('outro', 'Outro (ms)', one.outro);
+    if (one.x !== undefined) html += field('x', 'X (0–1280)', one.x) + field('y', 'Y (0–720)', one.y);
+    const keys = new Set([...Object.keys(t?.params ?? {}), ...Object.keys(one.params)]);
+    if (keys.size) {
+      html += `<div class="box"><h4>Settings (blank = game default)</h4>`;
+      for (const k of keys) {
+        const def = t?.params?.[k] ?? '';
+        html += `<div class="row"><label title="${k}">${k}</label><input data-param="${k}" value="${esc(one.params[k] ?? '')}" placeholder="${esc(def)}"></div>`;
+      }
+      html += `</div>`;
+    }
+  }
+  html += `<div class="box"><h4>Move</h4><div class="btns">
+      <button data-shift="-1">−1 beat</button><button data-shift="-0.25">−¼</button>
+      <button data-shift="0.25">+¼</button><button data-shift="1">+1 beat</button></div></div>
+    <div class="box"><h4>Repeat</h4>
+      <div class="row"><label>Every (beats)</label><input id="repEvery" type="number" value="1" step="0.25" min="0.125"></div>
+      <div class="row"><label>Copies</label><input id="repCount" type="number" value="4" min="1" max="500"></div>
+      <div class="row"><label>Move X each</label><input id="repDx" type="number" value="0"></div>
+      <div class="row"><label>Move Y each</label><input id="repDy" type="number" value="0"></div>
+      <button id="repBtn">Repeat selection</button></div>
+    <div class="btns"><button id="dupBtn">Duplicate</button><button id="delBtn">Delete</button></div>`;
+  el.innerHTML = html;
+
+  function field(key, label, v) {
+    return `<div class="row"><label>${label}</label><input type="number" data-key="${key}" value="${v}"></div>`;
+  }
+}
+const esc = s => String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+
+$('inspector').addEventListener('focusin', e => { if (e.target.matches('[data-key],[data-param]')) snapshot(); });
+$('inspector').addEventListener('input', e => {
+  const one = sel()[0]; if (!one) return;
+  if (e.target.dataset.key) { const v = parseFloat(e.target.value); if (!isNaN(v)) one[e.target.dataset.key] = v; }
+  if (e.target.dataset.param) {
+    const k = e.target.dataset.param;
+    if (e.target.value === '') delete one.params[k]; else one.params[k] = e.target.value;
+  }
+  drawTimeline(); drawStage();
+});
+$('inspector').addEventListener('click', e => {
+  if (e.target.dataset.shift) { snapshot(); for (const s of sel()) s.time = Math.round(s.time + beatMs() * +e.target.dataset.shift); redraw(); }
+  if (e.target.id === 'delBtn') del();
+  if (e.target.id === 'dupBtn') duplicate();
+  if (e.target.id === 'repBtn') repeat();
+});
+
+function del() { if (!selected.size) return; snapshot(); boss.spawns = boss.spawns.filter(s => !selected.has(s.id)); selected.clear(); redraw(); }
+function duplicate() {
+  const list = sel(); if (!list.length) return;
+  snapshot(); selected.clear();
+  for (const s of list) { const c = clone(s); c.time = Math.round(c.time + beatMs()); boss.spawns.push(c); selected.add(c.id); }
+  redraw();
+}
+function repeat() {
+  const list = sel(); if (!list.length) return;
+  const every = +$('repEvery').value * beatMs(), n = Math.min(500, +$('repCount').value | 0);
+  const dx = +$('repDx').value, dy = +$('repDy').value;
+  snapshot();
+  for (let i = 1; i <= n; i++)
+    for (const s of list) {
+      const c = clone(s); c.time = Math.round(s.time + every * i);
+      if (c.x !== undefined) { c.x = wrap(c.x + dx * i, W); c.y = wrap(c.y + dy * i, H); }
+      boss.spawns.push(c);
+    }
+  redraw(); status(`Added ${n * list.length} attacks`);
+}
+const wrap = (v, max) => ((Math.round(v) % max) + max) % max;
+function clone(s) { return { ...s, id: nextId++, params: { ...s.params } }; }
+
+// ---------- timeline ----------
+const tl = $('timeline'), tctx = tl.getContext('2d');
+const LABEL = 130, RULER = 22, ROW = 20;
+let rows = [], tlScroll = 0;   // rows: type names, in first-use order
+function computeRows() {
+  const seen = new Map();
+  for (const s of [...boss.spawns].sort((a, b) => a.time - b.time)) if (!seen.has(s.type)) seen.set(s.type, seen.size);
+  if (!seen.has(tool)) seen.set(tool, seen.size);
+  rows = [...seen.keys()];
+}
+const msToX = ms => LABEL + (ms - scrollMs) * zoom;
+const xToMs = x => (x - LABEL) / zoom + scrollMs;
+const rowY = i => RULER + i * ROW - tlScroll;
+
+function drawTimeline() {
+  computeRows();
+  const dpr = devicePixelRatio || 1, w = tl.clientWidth, h = tl.clientHeight;
+  if (tl.width !== w * dpr || tl.height !== h * dpr) { tl.width = w * dpr; tl.height = h * dpr; }
+  const c = tctx; c.setTransform(dpr, 0, 0, dpr, 0, 0);
+  c.fillStyle = '#0e0e14'; c.fillRect(0, 0, w, h);
+
+  // beat grid
+  const bm = beatMs(), first = Math.floor((xToMs(LABEL) - boss.offset) / bm), last = Math.ceil((xToMs(w) - boss.offset) / bm);
+  const showSub = bm * zoom > 28;
+  for (let b = first; b <= last; b++) {
+    const ms = boss.offset + b * bm, x = msToX(ms);
+    c.fillStyle = b % 4 === 0 ? '#34344a' : '#22222f'; c.fillRect(x, RULER, 1, h);
+    if (showSub) { c.fillStyle = '#191922'; for (let q = 1; q < 4; q++) c.fillRect(msToX(ms + q * bm / 4), RULER, 1, h); }
+  }
+  // rows
+  c.font = '11px system-ui'; c.textBaseline = 'middle';
+  rows.forEach((type, i) => {
+    const y = rowY(i); if (y + ROW < RULER || y > h) return;
+    if (i % 2) { c.fillStyle = '#ffffff06'; c.fillRect(LABEL, y, w, ROW); }
+  });
+  // spawns
+  const rowOf = new Map(rows.map((t, i) => [t, i]));
+  const lo = xToMs(LABEL - 50), hi = xToMs(w + 50);
+  for (const s of boss.spawns) {
+    if (s.time < lo - s.warning || s.time > hi) continue;
+    const y = rowY(rowOf.get(s.type)); if (y + ROW < RULER || y > h) continue;
+    const x = msToX(s.time), on = selected.has(s.id);
+    if (s.warning > 0) { c.fillStyle = on ? '#2be8ff30' : '#ff2b6e22'; c.fillRect(msToX(s.time - s.warning), y + 7, s.warning * zoom, 6); }
+    const len = Math.max(6, (s.outro || 0) * zoom);
+    c.fillStyle = on ? '#2be8ff' : '#ff2b6e'; c.fillRect(x - 1, y + 3, Math.max(4, Math.min(len, 60)), ROW - 6);
+  }
+  // marquee
+  if (drag?.mode === 'box') {
+    c.strokeStyle = '#2be8ff'; c.setLineDash([4, 3]);
+    c.strokeRect(drag.x0, drag.y0, drag.x1 - drag.x0, drag.y1 - drag.y0); c.setLineDash([]);
+  }
+  // labels
+  c.fillStyle = '#15151d'; c.fillRect(0, RULER, LABEL, h);
+  rows.forEach((type, i) => {
+    const y = rowY(i); if (y + ROW < RULER || y > h) return;
+    c.fillStyle = type === tool ? '#ff2b6e' : '#8a8aa0'; c.fillText(type, 8, y + ROW / 2, LABEL - 12);
+  });
+  // ruler
+  c.fillStyle = '#15151d'; c.fillRect(0, 0, w, RULER);
+  c.fillStyle = '#8a8aa0';
+  const stepSec = [0.5, 1, 2, 5, 10, 30].find(s => s * 1000 * zoom > 70) ?? 60;
+  for (let t = Math.floor(xToMs(LABEL) / 1000 / stepSec) * stepSec; t * 1000 < xToMs(w); t += stepSec) {
+    const x = msToX(t * 1000); if (x < LABEL) continue;
+    c.fillRect(x, RULER - 6, 1, 6); c.fillText(fmt(t * 1000).replace(/\.000$/, ''), x + 3, 10);
+  }
+  // playhead
+  const px = msToX(playhead);
+  if (px >= LABEL) { c.fillStyle = '#ffd02b'; c.fillRect(px, 0, 2, h); }
+}
+
+let drag = null;
+function hitTimeline(x, y) {
+  const i = Math.floor((y + tlScroll - RULER) / ROW), type = rows[i];
+  if (!type) return null;
+  let best = null, bestD = 8;
+  for (const s of boss.spawns) {
+    if (s.type !== type) continue;
+    const d = Math.abs(msToX(s.time) - x);
+    if (d < bestD) { best = s; bestD = d; }
+  }
+  return best;
+}
+tl.addEventListener('mousedown', e => {
+  const r = tl.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top;
+  if (y < RULER) { setPlayhead(Math.max(0, xToMs(x))); drag = { mode: 'scrub' }; return; }
+  if (x < LABEL) {                                           // click a row label: choose that attack
+    const t = rows[Math.floor((y + tlScroll - RULER) / ROW)]; if (t) { tool = t; renderPalette(); drawTimeline(); }
+    return;
+  }
+  const hit = hitTimeline(x, y);
+  if (hit) {
+    if (e.shiftKey) selected.has(hit.id) ? selected.delete(hit.id) : selected.add(hit.id);
+    else if (!selected.has(hit.id)) selected = new Set([hit.id]);
+    snapshot();
+    drag = { mode: 'move', startMs: xToMs(x), orig: new Map(sel().map(s => [s.id, s.time])), anchor: hit, moved: false };
+  } else {
+    drag = { mode: 'box', x0: x, y0: y, x1: x, y1: y, shift: e.shiftKey };
+  }
+  redraw();
+});
+addEventListener('mousemove', e => {
+  if (!drag || drag.stage) return;
+  const r = tl.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top;
+  if (drag.mode === 'scrub') setPlayhead(Math.max(0, xToMs(x)));
+  if (drag.mode === 'move') {
+    const delta = snap(drag.orig.get(drag.anchor.id) + xToMs(x) - drag.startMs) - drag.orig.get(drag.anchor.id);
+    for (const s of sel()) s.time = Math.round(drag.orig.get(s.id) + delta);
+    drag.moved = true; drawTimeline(); drawStage();
+  }
+  if (drag.mode === 'box') { drag.x1 = x; drag.y1 = y; drawTimeline(); }
+});
+addEventListener('mouseup', e => {
+  if (!drag || drag.stage) return;
+  if (drag.mode === 'move' && !drag.moved) undoStack.pop();
+  if (drag.mode === 'box') {
+    const small = Math.abs(drag.x1 - drag.x0) < 4 && Math.abs(drag.y1 - drag.y0) < 4;
+    if (small) {                                             // plain click on empty space: place an attack
+      if (!e.shiftKey) {
+        snapshot();
+        const s = makeSpawn(tool, snap(Math.max(0, xToMs(drag.x0))));
+        boss.spawns.push(s); selected = new Set([s.id]);
+        status(`Added ${tool} at ${fmt(s.time)}`);
+      }
+    } else {
+      const [ax, bx] = [Math.min(drag.x0, drag.x1), Math.max(drag.x0, drag.x1)];
+      const [ay, by] = [Math.min(drag.y0, drag.y1), Math.max(drag.y0, drag.y1)];
+      if (!drag.shift) selected.clear();
+      const rowOf = new Map(rows.map((t, i) => [t, i]));
+      for (const s of boss.spawns) {
+        const x = msToX(s.time), y = rowY(rowOf.get(s.type)) + ROW / 2;
+        if (x >= ax && x <= bx && y >= ay && y <= by) selected.add(s.id);
+      }
+    }
+  }
+  drag = null; redraw();
+});
+tl.addEventListener('wheel', e => {
+  e.preventDefault();
+  const r = tl.getBoundingClientRect(), x = e.clientX - r.left;
+  if (e.ctrlKey) {
+    const at = xToMs(x);
+    zoom = Math.min(2, Math.max(0.005, zoom * (e.deltaY < 0 ? 1.15 : 1 / 1.15)));
+    scrollMs = at - (x - LABEL) / zoom;
+  } else if (e.shiftKey) {
+    tlScroll = Math.max(0, Math.min(rows.length * ROW, tlScroll + e.deltaY));
+  } else {
+    scrollMs += (e.deltaX || e.deltaY) / zoom;
+  }
+  drawTimeline();
+}, { passive: false });
+function fitAll() {
+  const end = Math.max(10000, ...boss.spawns.map(s => s.time)) + 2000;
+  zoom = Math.max(0.005, (tl.clientWidth - LABEL - 20) / end); scrollMs = -500; tlScroll = 0;
+}
+
+// ---------- stage ----------
+const st = $('stage'), sctx = st.getContext('2d');
+let stageScale = 1;
+function layoutStage() {
+  const wrap = $('stageWrap'), dpr = devicePixelRatio || 1;
+  stageScale = Math.min((wrap.clientWidth - 20) / W, (wrap.clientHeight - 30) / H);
+  st.style.width = W * stageScale + 'px'; st.style.height = H * stageScale + 'px';
+  st.width = W * stageScale * dpr; st.height = H * stageScale * dpr;
+  drawStage();
+}
+// Roughly what each attack looks like, so you can see where it lands. Not the real graphics.
+function drawStage() {
+  const c = sctx, k = stageScale * (devicePixelRatio || 1);
+  c.setTransform(k, 0, 0, k, 0, 0);
+  c.fillStyle = '#000'; c.fillRect(0, 0, W, H);
+  c.strokeStyle = '#ffffff10'; c.lineWidth = 1;
+  for (let x = 0; x <= W; x += 80) { c.beginPath(); c.moveTo(x, 0); c.lineTo(x, H); c.stroke(); }
+  for (let y = 0; y <= H; y += 80) { c.beginPath(); c.moveTo(0, y); c.lineTo(W, y); c.stroke(); }
+
+  const visible = boss.spawns.filter(s => s.x !== undefined && (selected.has(s.id) ||
+    (playhead >= s.time - s.warning - 1 && playhead <= s.time + Math.max(400, s.outro))));
+  c.font = '18px system-ui'; c.textAlign = 'center'; c.textBaseline = 'middle';
+  for (const s of visible) {
+    const warn = playhead < s.time, on = selected.has(s.id);
+    const color = on ? '#2be8ff' : '#ff2b6e';
+    const size = num(s, 'size', 60);
+    c.globalAlpha = warn ? 0.35 : 1;
+    c.fillStyle = color; c.strokeStyle = color; c.lineWidth = 3;
+    const side = s.params.modelSide ?? types.get(s.type)?.params?.modelSide ?? '';
+    if (/beam|wall/i.test(s.type)) {
+      if (/up|down/.test(side)) c.fillRect(s.x - size / 2, 0, size, H); else c.fillRect(0, s.y - size / 2, W, size);
+    } else if (/hole|bomb|circle|ring|round/i.test(s.type)) {
+      c.beginPath(); c.arc(s.x, s.y, Math.max(10, size / 2), 0, Math.PI * 2); warn ? c.stroke() : c.fill();
+    } else {
+      const r = Math.max(14, size / 2);
+      warn ? c.strokeRect(s.x - r, s.y - r, r * 2, r * 2) : c.fillRect(s.x - r, s.y - r, r * 2, r * 2);
+    }
+    c.globalAlpha = 1;
+    if (on) { c.fillStyle = '#fff'; c.fillText(s.type, s.x, s.y - Math.max(24, size / 2 + 14)); }
+  }
+  // player-ish marker in the middle, for scale
+  c.fillStyle = '#2be8ff'; c.fillRect(W / 2 - 9, H / 2 - 9, 18, 18);
+}
+function num(s, key, def) {
+  const v = parseFloat(s.params[key] ?? types.get(s.type)?.params?.[key]);
+  return isNaN(v) ? def : v;
+}
+function stagePoint(e) {
+  const r = st.getBoundingClientRect();
+  return [Math.round((e.clientX - r.left) / stageScale), Math.round((e.clientY - r.top) / stageScale)];
+}
+st.addEventListener('mousedown', e => {
+  const [x, y] = stagePoint(e);
+  const hit = boss.spawns.filter(s => s.x !== undefined && (selected.has(s.id) ||
+      (playhead >= s.time - s.warning && playhead <= s.time + Math.max(400, s.outro))))
+    .find(s => Math.hypot(s.x - x, s.y - y) < 30);
+  snapshot();
+  if (hit) {
+    if (!selected.has(hit.id)) selected = e.shiftKey ? new Set([...selected, hit.id]) : new Set([hit.id]);
+  } else {
+    const s = makeSpawn(tool, snap(playhead), x, y);
+    if (s.x === undefined) { undoStack.pop(); status(`${tool} has no position; place it on the timeline`); return; }
+    boss.spawns.push(s); selected = new Set([s.id]);
+  }
+  drag = { stage: true, last: [x, y] };
+  redraw();
+});
+addEventListener('mousemove', e => {
+  if (!drag?.stage) return;
+  const [x, y] = stagePoint(e), [lx, ly] = drag.last;
+  for (const s of sel()) if (s.x !== undefined) { s.x = Math.max(0, Math.min(W, s.x + x - lx)); s.y = Math.max(0, Math.min(H, s.y + y - ly)); }
+  drag.last = [x, y]; drawStage(); renderInspectorValues();
+});
+addEventListener('mouseup', () => { if (drag?.stage) { drag = null; renderInspector(); } });
+function renderInspectorValues() {
+  const one = sel().length === 1 ? sel()[0] : null; if (!one) return;
+  for (const el of document.querySelectorAll('#inspector [data-key]')) el.value = one[el.dataset.key];
+}
+
+// ---------- playback ----------
+function setPlayhead(ms) {
+  playhead = ms;
+  if (playing) { playFrom = ms; playStart = performance.now(); if (audio.src) audio.currentTime = ms / 1000; }
+  $('clock').textContent = fmt(ms);
+  drawTimeline(); drawStage();
+}
+function togglePlay() {
+  playing = !playing;
+  $('playBtn').textContent = playing ? '❚❚ Pause' : '▶ Play';
+  if (playing) {
+    playFrom = playhead; playStart = performance.now();
+    if (audio.src) { audio.currentTime = playhead / 1000; audio.play(); }
+    requestAnimationFrame(tick);
+  } else audio.pause();
+}
+function tick() {
+  if (!playing) return;
+  playhead = audio.src && !audio.paused ? audio.currentTime * 1000 : playFrom + performance.now() - playStart;
+  $('clock').textContent = fmt(playhead);
+  const w = tl.clientWidth;               // follow the playhead
+  if (msToX(playhead) > w - 60) scrollMs = playhead - (w - LABEL) * 0.2 / zoom;
+  drawTimeline(); drawStage();
+  requestAnimationFrame(tick);
+}
+
+// ---------- wiring ----------
+function syncInputs() { $('level').value = boss.level; $('bpm').value = boss.bpm; $('offset').value = boss.offset; }
+function redraw() { drawTimeline(); drawStage(); renderInspector(); renderPalette(); }
+
+$('level').addEventListener('change', e => { boss.level = e.target.value.trim() || 'DEADLOCKED'; saveHandle = null; });
+$('bpm').addEventListener('change', e => { boss.bpm = +e.target.value || 120; drawTimeline(); });
+$('offset').addEventListener('change', e => { boss.offset = +e.target.value || 0; drawTimeline(); });
+$('newBtn').onclick = () => { if (boss.spawns.length && !confirm('Start a new boss? Unsaved changes are lost.')) return; snapshot(); boss = blank(); selected.clear(); saveHandle = null; syncInputs(); fitAll(); redraw(); };
+$('openBtn').onclick = () => $('openFile').click();
+$('openFile').onchange = e => { if (e.target.files[0]) open(e.target.files[0]); e.target.value = ''; };
+$('saveBtn').onclick = save;
+$('playBtn').onclick = togglePlay;
+$('musicBtn').onclick = () => $('musicFile').click();
+$('musicFile').onchange = e => { const f = e.target.files[0]; if (f) { audio.src = URL.createObjectURL(f); status('Music: ' + f.name); } };
+
+addEventListener('keydown', e => {
+  if (e.target.matches('input, select')) return;
+  const ctrl = e.ctrlKey || e.metaKey;
+  if (e.code === 'Space') { e.preventDefault(); togglePlay(); }
+  else if (e.key === 'Delete' || e.key === 'Backspace') del();
+  else if (ctrl && e.key === 'z') { e.preventDefault(); undo(); }
+  else if (ctrl && (e.key === 'y' || (e.shiftKey && e.key === 'Z'))) { e.preventDefault(); redo(); }
+  else if (ctrl && e.key === 's') { e.preventDefault(); save(); }
+  else if (ctrl && e.key === 'a') { e.preventDefault(); selected = new Set(boss.spawns.map(s => s.id)); redraw(); }
+  else if (ctrl && e.key === 'd') { e.preventDefault(); duplicate(); }
+  else if (ctrl && e.key === 'c') {
+    const list = sel(); if (!list.length) return;
+    const t0 = Math.min(...list.map(s => s.time));
+    clipboard = list.map(s => ({ ...s, time: s.time - t0, params: { ...s.params } }));
+    status(`Copied ${list.length}`);
+  } else if (ctrl && e.key === 'v') {
+    if (!clipboard.length) return;
+    snapshot(); selected.clear();
+    for (const s of clipboard) { const c = clone(s); c.time = Math.round(snap(playhead) + s.time); boss.spawns.push(c); selected.add(c.id); }
+    redraw();
+  } else if (e.key === 'Escape') { selected.clear(); redraw(); }
+});
+addEventListener('resize', () => { layoutStage(); drawTimeline(); });
+addEventListener('beforeunload', e => { if (undoStack.length) e.preventDefault(); });
+
+syncInputs();
+new ResizeObserver(() => { layoutStage(); drawTimeline(); }).observe($('stageWrap'));
+fitAll(); renderPalette(); redraw();
+status(types.size ? `${types.size} attack types loaded` : 'No attack list built in');
+</script>
+</body>
+</html>

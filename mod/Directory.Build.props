@@ -1,0 +1,8 @@
+<Project>
+  <!-- Keep build output in a short path; the session folder path is too long for MSBuild.
+       One folder per project so they don't overwrite each other's restore files. -->
+  <PropertyGroup>
+    <BaseIntermediateOutputPath>$(TEMP)\jsbmod\$(MSBuildProjectName)\obj\</BaseIntermediateOutputPath>
+    <BaseOutputPath>$(TEMP)\jsbmod\$(MSBuildProjectName)\bin\</BaseOutputPath>
+  </PropertyGroup>
+</Project>

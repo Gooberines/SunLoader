@@ -1,0 +1,105 @@
+# Sun Loader
+
+A mod loader and in-game boss editor for **Just Shapes & Beats** (Steam, Windows), built on
+[BepInEx 6](https://github.com/BepInEx/BepInEx).
+
+- **Boss editor:** press **F1** in any level to place attacks on the game screen, set their timing and settings,
+  preview them live, and save your own boss over that level.
+- **Mod menu:** a **MODS** button on the main menu (or **F2** anywhere) lists DLL mods, loads them on the spot or at
+  startup, and turns startup plugins on and off.
+- **Custom music** for your bosses (`.wav`).
+- **No damage** test mode, **unlock all levels** (your save file isn't changed), and attack pictures and descriptions.
+- **An installer** that sets everything up in one click, plus an example mod and a guide for making your own.
+
+> Fan-made and unofficial. Not affiliated with Berzerk Studio. This repository contains no game files.
+
+## Install
+
+1. Download `SunLoader-Setup.zip` from [Releases](../../releases) and unzip the whole folder.
+2. Close the game, run `SunLoaderInstaller.exe` and press **Install**.
+3. Start the game. The first start takes a minute or two longer while BepInEx sets itself up.
+
+The installer works offline:
+- It unpacks the official, unmodified BepInEx 6.0.0-be.791 package (checked by SHA-256) and copies the mod DLLs into
+  the game folder.
+- **Uninstall** in the same window switches everything off and keeps your bosses and mods.
+
+To install by hand instead:
+1. Unzip BepInEx 6.0.0-be.791 (Unity IL2CPP, win-x64) into the game folder.
+2. Put `SunLoader.dll` in `BepInEx\plugins\SunLoader\`.
+
+## Using it
+
+| Where | Key | What |
+|---|---|---|
+| Main menu | **MODS** button / **F2** | Mod menu: load DLLs from `BepInEx\mods`, auto-load, turn plugins on/off |
+| In a level | **F1** | Boss editor (it has its own Help screen) |
+| Boss editor | Space, Q/E, Ctrl+Z/C/V/D/S | Play/pause, rotate, undo, copy/paste, duplicate, save |
+
+- **Bosses** are saved to `BepInEx\SunLoader\<level name>.json`. That level plays your boss from then on.
+- **Songs** go in `BepInEx\SunLoader\music`.
+- **Settings** are in `BepInEx\config\riptid.jsb.sunloader.cfg`: keys, unlock-all, and which game font the menus use.
+
+## Making mods
+
+Start with [`mod/ExampleMod`](mod/ExampleMod). It's a small working mod with comments on every technique, and its
+[README](mod/ExampleMod/README.md) is a full guide:
+- setup
+- hooking the game safely
+- hooks known to work
+- this game's quirks (IL2CPP code folding, stripped Unity methods)
+- debugging and sharing
+
+## Building from source
+
+You need:
+- **Windows**
+- **The .NET SDK 8**, which builds the net6.0 mods and the .NET Framework 4.8 installer
+- **The game with BepInEx run once.** The projects compile against the `BepInEx\interop` DLLs it generates, which
+  aren't in this repo because they're made from the game.
+
+```powershell
+.\build.ps1                                          # game in the default Steam folder
+.\build.ps1 -GameDir "D:\Games\Just Shapes & Beats"  # somewhere else
+.\build.ps1 -Deploy                                  # also copy the mods into your game
+```
+
+This produces `build\` (each project) and `dist\SunLoader-Setup.zip` (the release package). To build one project:
+```powershell
+dotnet build mod\SunLoader\SunLoader.csproj -c Release -p:GameDir="D:\Games\Just Shapes & Beats"
+```
+
+## What's in here
+
+| Folder | What |
+|---|---|
+| `mod/SunLoader` | The main plugin |
+| `mod/Installer` | The installer (.NET Framework 4.8 WinForms) |
+| `mod/ExampleMod` | Example mod + modding guide |
+| `mod/NoIntro` | Small mod that skips the intro video |
+| `mod/editor` | Older browser-based boss editor (`build.ps1` bakes in the attack list from your game) |
+| `tools/InteropDumper` | Lists types, fields and method signatures in the interop DLLs, to find things to hook |
+
+The files in `mod/SunLoader`:
+
+| File | What |
+|---|---|
+| `Plugin.cs` | Startup, settings, level dump/import hooks, boss file format |
+| `SafeRead.cs` | Memory-checked reads of game objects, which avoid crashes from IL2CPP code folding |
+| `EditorSession.cs` | The level being edited, loading/saving, applying to the game, seeking the song |
+| `BossEditorUI.cs` | The F1 editor UI (Unity IMGUI, hand-drawn controls) |
+| `AttackInfo.cs` | Attack categories, descriptions, editor shapes |
+| `Music.cs` | Custom songs (WAV decoding) and no-damage mode |
+| `Pictures.cs` | Attack screenshots for the editor |
+| `ModMenu.cs` | Mod menu and runtime DLL loader |
+| `Theme.cs` | Game-style look (font, slanted blocks, beat pulse) |
+| `Unlocks.cs` | Unlock-all-levels hooks |
+
+## Credits and licenses
+
+- **Sun Loader**: MIT, see [LICENSE](LICENSE).
+- **[BepInEx](https://github.com/BepInEx/BepInEx)**: LGPL-2.1. The installer package includes the unmodified BepInEx
+  release and its license (`mod/Installer/BepInEx-LICENSE.txt`).
+- **[HarmonyX](https://github.com/BepInEx/HarmonyX)** and **[Il2CppInterop](https://github.com/BepInEx/Il2CppInterop)**
+  come with BepInEx.
+- **Just Shapes & Beats** © Berzerk Studio. You need your own copy of the game.
