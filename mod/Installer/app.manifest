@@ -2,7 +2,7 @@
 <!-- Declares what the installer needs from Windows. It runs as the normal user (no admin
      prompt); if the game folder is protected it says so and asks to be re-run as admin. -->
 <assembly manifestVersion="1.0" xmlns="urn:schemas-microsoft-com:asm.v1">
-  <assemblyIdentity version="1.0.2.0" name="SunLoader.Installer" />
+  <assemblyIdentity version="0.1.0.0" name="SunLoader.Installer" />
   <trustInfo xmlns="urn:schemas-microsoft-com:asm.v2">
     <security>
       <requestedPrivileges xmlns="urn:schemas-microsoft-com:asm.v3">

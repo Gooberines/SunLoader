@@ -204,7 +204,7 @@ namespace SunLoaderInstaller
             }
             using (var sub = new Font("Segoe UI", 10f, FontStyle.Bold))
             using (var dim = new SolidBrush(Color.FromArgb(200, 200, 215)))
-                g.DrawString("Mod loader + boss editor for Just Shapes & Beats", sub, dim, 115, 72);
+                g.DrawString("Mod loader + boss editor for Just Shapes & Beats  ·  ALPHA", sub, dim, 115, 72);
         }
 
         // A simple sun: a disc with eight rays.

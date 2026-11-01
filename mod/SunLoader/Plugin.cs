@@ -12,7 +12,7 @@ using Il2CppList = Il2CppSystem.Collections.Generic;
 
 namespace SunLoader
 {
-    [BepInPlugin("riptid.jsb.sunloader", "Sun Loader", "1.0.0")]
+    [BepInPlugin("riptid.jsb.sunloader", "Sun Loader", "0.1.0-alpha")]
     public class Plugin : BasePlugin
     {
         internal static ManualLogSource Logger;

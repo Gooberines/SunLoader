@@ -1,5 +1,8 @@
 # Sun Loader
 
+> **Alpha.** Sun Loader is early and still changing. Expect bugs, and back up your bosses. Bug reports are welcome in
+> [Issues](../../issues).
+
 A mod loader and in-game boss editor for **Just Shapes & Beats** (Steam, Windows), built on
 [BepInEx 6](https://github.com/BepInEx/BepInEx).
 

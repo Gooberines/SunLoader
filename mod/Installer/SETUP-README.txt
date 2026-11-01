@@ -1,5 +1,8 @@
-SUN LOADER - mod loader + boss editor for Just Shapes & Beats
-==============================================================
+SUN LOADER (ALPHA) - mod loader + boss editor for Just Shapes & Beats
+======================================================================
+
+This is an early alpha: expect bugs, and back up your bosses
+(BepInEx\SunLoader). Report problems at github.com/Gooberines/SunLoader/issues
 
 HOW TO INSTALL
 1. Unzip this whole folder (don't run the installer from inside the zip).

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.IO;
 using BepInEx;
 using BepInEx.Unity.IL2CPP;
@@ -10,7 +10,7 @@ namespace NoIntro
     // JSB_Data\StreamingAssets\intro.webm with an empty file, so the video failed and the
     // game moved on. This ends the intro the moment it starts instead, without touching
     // any game files.
-    [BepInPlugin("riptid.jsb.nointro", "No Intro", "1.0.0")]
+    [BepInPlugin("riptid.jsb.nointro", "No Intro", "0.1.0-alpha")]
     public class Plugin : BasePlugin
     {
         internal static BepInEx.Logging.ManualLogSource Logger;
