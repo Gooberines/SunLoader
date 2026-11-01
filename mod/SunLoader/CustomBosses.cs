@@ -16,6 +16,8 @@ namespace SunLoader
     {
         public string Path, Name, Stage, Music;
         public int Attacks;
+        public int? SharedIssue;        // its online post, if it was shared or downloaded
+        public string SharedAuthor;
         public DateTime Modified;
         public string Error;
     }
@@ -56,6 +58,11 @@ namespace SunLoader
                     b.Stage = (string)file["stage"];
                     b.Music = (string)file["music"];
                     b.Attacks = file["layers"]?.AsArray().Sum(l => l["spawns"]?.AsArray().Count ?? 0) ?? 0;
+                    if ((string)file["shared"]?["repo"] == Share.Repo)
+                    {
+                        b.SharedIssue = (int?)file["shared"]?["issue"];
+                        b.SharedAuthor = (string)file["shared"]?["author"];
+                    }
                     if (b.Stage == null) b.Error = "No stage set in the file";
                 }
                 catch (Exception e) { b.Error = "Can't read this file: " + e.Message; }
@@ -71,6 +78,13 @@ namespace SunLoader
         }
 
         public static bool Exists(string name) => File.Exists(Path.Combine(Dir, name + ".json"));
+
+        // The online post a boss was downloaded from or uploaded to, or null.
+        public static int? SharedNumber(string name)
+        {
+            try { return (int?)JsonNode.Parse(File.ReadAllText(Path.Combine(Dir, name + ".json")))?["shared"]?["issue"]; }
+            catch { return null; }
+        }
 
         // Makes a new boss file. withOriginal copies the stage's own attacks (if the stage has
         // been played once, so its dump exists); otherwise it starts with only its checkpoints.
@@ -209,6 +223,12 @@ namespace SunLoader
         // The boss file to load for a level that's starting, or null to play it as usual.
         public static string FileFor(string levelId)
         {
+            // In an online lobby, the boss the host picked for this stage.
+            if (Active == null && LobbySync.InLobby && LobbySync.Boss is { } lobbyBoss && lobbyBoss.Stage == levelId)
+            {
+                Plugin.Logger.LogInfo($"Bosses: playing the lobby's boss '{lobbyBoss.Name}'");
+                return lobbyBoss.Path;
+            }
             if (Active == null) return null;
             if (Active.Stage != levelId)
             {

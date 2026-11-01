@@ -182,7 +182,7 @@ namespace SunLoader
                 string name = null;
                 try { name = level.name; } catch { }
                 name = SetMetaSongPatch.FileId(name, level.nId);
-                var boss = CustomBosses.Active;
+                var boss = CustomBosses.Active ?? (LobbySync.InLobby ? LobbySync.Boss : null);
                 var file = boss != null && boss.Stage == name ? boss.Music : Music.ForLevel(name);
                 AudioClip clip;
                 if (file == null)

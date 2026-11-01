@@ -12,9 +12,10 @@ using Il2CppList = Il2CppSystem.Collections.Generic;
 
 namespace SunLoader
 {
-    [BepInPlugin("riptid.jsb.sunloader", "Sun Loader", "0.1.0-alpha")]
+    [BepInPlugin("riptid.jsb.sunloader", "Sun Loader", Version)]
     public class Plugin : BasePlugin
     {
+        public const string Version = "0.1.0-alpha";
         internal static ManualLogSource Logger;
         // BepInEx\SunLoader\<level>.json replaces that level; dumps\ holds the originals.
         internal static string Root;
@@ -24,6 +25,8 @@ namespace SunLoader
         internal static BepInEx.Configuration.ConfigEntry<UnityEngine.KeyCode> EditorKey;
         internal static BepInEx.Configuration.ConfigEntry<UnityEngine.KeyCode> ModMenuKey;
         internal static BepInEx.Configuration.ConfigEntry<UnityEngine.KeyCode> BossMenuKey;
+        internal static BepInEx.Configuration.ConfigEntry<string> ShareRepo, ShareClientId;
+        internal static BepInEx.Configuration.ConfigEntry<bool> LobbyBosses;
         internal static BepInEx.Configuration.ConfigEntry<string> UiFont;
 
         public override void Load()
@@ -38,7 +41,14 @@ namespace SunLoader
             EditorKey = Config.Bind("Editor", "ToggleKey", UnityEngine.KeyCode.F1, "Opens and closes the in-game boss editor during a level.");
             ModMenuKey = Config.Bind("Mod menu", "ToggleKey", UnityEngine.KeyCode.F2, "Opens the mod menu from anywhere (it also has a MODS button on the main menu).");
             BossMenuKey = Config.Bind("Bosses", "ToggleKey", UnityEngine.KeyCode.F4, "Opens the Bosses menu, where you make and play your own bosses (it also has a BOSSES button on the main menu).");
+            ShareRepo = Config.Bind("Sharing", "Repository", "Gooberines/SunLoader-Bosses",
+                "The public GitHub repository (owner/name) that holds shared bosses. Each shared boss is an issue there.");
+            ShareClientId = Config.Bind("Sharing", "GitHubAppClientId", "",
+                "Client ID of the GitHub App used to sign in for uploading and rating. Empty = the one built into Sun Loader.");
+            LobbyBosses = Config.Bind("Multiplayer", "PlayLobbyBosses", true,
+                "In an online lobby, play the custom boss the host picked (it's sent to you through the lobby).");
             UiFont = Config.Bind("UI", "Font", "", "Name (or part of it) of the game font the menus use. Empty = pick automatically. LogOutput.log lists the choices.");
+            Share.Init();
             new Harmony("riptid.jsb.sunloader").PatchAll();
             AddComponent<BossEditorUI>();
             Logger.LogInfo($"Sun Loader loaded. Press {EditorKey.Value} in a level to edit its boss. Boss files: " + Root);

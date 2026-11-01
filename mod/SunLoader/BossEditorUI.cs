@@ -99,6 +99,7 @@ namespace SunLoader
                 if (Input.GetKeyDown(Plugin.ModMenuKey.Value)) ModMenu.Toggle();
                 if (Input.GetKeyDown(Plugin.BossMenuKey.Value)) BossMenu.Toggle();
                 CustomBosses.Update();
+                LobbySync.Update();
                 NoDamage.On = (noDamageToggle || preview != null) && EditorSession.InLevel;
                 if (Input.GetKeyDown(Plugin.EditorKey.Value)) Toggle();
                 // A boss started with Edit from the Bosses menu opens the editor once its level is up.

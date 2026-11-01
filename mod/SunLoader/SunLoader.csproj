@@ -16,6 +16,7 @@
     <Reference Include="$(GameDir)\BepInEx\interop\Assembly-CSharp.dll" Private="false" />
     <Reference Include="$(GameDir)\BepInEx\interop\Assembly-CSharp-firstpass.dll" Private="false" />
     <Reference Include="$(GameDir)\BepInEx\interop\Il2Cppmscorlib.dll" Private="false" />
+    <Reference Include="$(GameDir)\BepInEx\interop\Facepunch.Steamworks.Win64.dll" Private="false" />
     <Reference Include="$(GameDir)\BepInEx\interop\Il2CppSystem.dll" Private="false" />
     <Reference Include="$(GameDir)\BepInEx\interop\UnityEngine.CoreModule.dll" Private="false" />
     <Reference Include="$(GameDir)\BepInEx\interop\Unity.TextMeshPro.dll" Private="false" />

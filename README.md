@@ -9,6 +9,10 @@ A mod loader and in-game boss editor for **Just Shapes & Beats** (Steam, Windows
 - **Bosses menu:** a **BOSSES** button on the main menu (or **F4**) to make your own bosses, separate from the game's
   levels and playlists. Name one, pick a stage, and the editor opens; play, edit, rename, copy or delete them from the
   list.
+- **Share and rate bosses:** the **Online** tab lists bosses other players shared, best rated first. Download any of
+  them, rate them 👍 / 👎, and share your own (sign in with GitHub to post and rate; browsing needs no account).
+- **Custom bosses in online multiplayer:** the lobby host picks one of their bosses, and everyone in the lobby with Sun
+  Loader plays it when its stage comes up. The boss is sent through the Steam lobby; nobody has to download it.
 - **Boss editor:** press **F1** in any level to place attacks on the game screen, set their timing and settings,
   preview them live, and save your own boss over that level.
 - **Mod menu:** a **MODS** button on the main menu (or **F2** anywhere) lists DLL mods, loads them on the spot or at
@@ -46,6 +50,11 @@ To install by hand instead:
 - **Your own bosses** (Bosses menu) are saved to `BepInEx\SunLoader\bosses\<name>.json`. Each plays on a *stage*: a
   game level whose scene and length it uses, with that level's song or one of yours. They don't change the game's
   levels. Deleted ones go to `bosses\deleted`.
+- **Shared bosses** are issues in [Gooberines/SunLoader-Bosses](https://github.com/Gooberines/SunLoader-Bosses); a
+  boss's 👍 / 👎 reactions are its rating. Signing in uses a GitHub App that can only post and react to issues there
+  ([setup](docs/SHARING-SETUP.md)). The login is saved encrypted for your Windows user.
+- **Multiplayer:** in an online lobby, the host's boss list shows **Use in lobby**. Players need Sun Loader to see the
+  custom boss (others get the normal level), and a custom song only plays for players who have the same song file.
 - **Level replacements** (F1 in a normal level) are saved to `BepInEx\SunLoader\<level name>.json`. That level plays
   your boss from then on.
 - **Songs** go in `BepInEx\SunLoader\music`.
@@ -100,7 +109,9 @@ The files in `mod/SunLoader`:
 | `EditorSession.cs` | The level being edited, loading/saving, applying to the game, seeking the song |
 | `BossEditorUI.cs` | The F1 editor UI (Unity IMGUI, hand-drawn controls) |
 | `CustomBosses.cs` | Bosses-menu boss files, the stage list, and starting a boss's level |
-| `BossMenu.cs` | The Bosses menu UI |
+| `BossMenu.cs` | The Bosses menu UI (My bosses, Online, lobby) |
+| `Share.cs` | Sharing and rating through GitHub, and the GitHub login |
+| `LobbySync.cs` | Sending the host's boss to everyone in an online lobby |
 | `AttackInfo.cs` | Attack categories, descriptions, editor shapes |
 | `Music.cs` | Custom songs (WAV decoding) and no-damage mode |
 | `Pictures.cs` | Attack screenshots for the editor |
