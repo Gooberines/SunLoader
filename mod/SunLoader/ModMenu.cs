@@ -180,7 +180,7 @@ namespace SunLoader
         public static void Toggle()
         {
             Open = !Open;
-            if (Open) { mods = ModLoader.Scan(); scroll = 0; }
+            if (Open) { mods = ModLoader.Scan(); scroll = 0; BossMenu.Open = false; }
         }
 
         static void Say(string msg) { message = msg; messageUntil = Time.realtimeSinceStartup + 6; }

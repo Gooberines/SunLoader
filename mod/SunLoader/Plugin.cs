@@ -23,6 +23,7 @@ namespace SunLoader
         internal static BepInEx.Configuration.ConfigEntry<bool> UnlockAll;
         internal static BepInEx.Configuration.ConfigEntry<UnityEngine.KeyCode> EditorKey;
         internal static BepInEx.Configuration.ConfigEntry<UnityEngine.KeyCode> ModMenuKey;
+        internal static BepInEx.Configuration.ConfigEntry<UnityEngine.KeyCode> BossMenuKey;
         internal static BepInEx.Configuration.ConfigEntry<string> UiFont;
 
         public override void Load()
@@ -36,6 +37,7 @@ namespace SunLoader
                 "Makes every level playable while the mod is on. Your save file is not changed.");
             EditorKey = Config.Bind("Editor", "ToggleKey", UnityEngine.KeyCode.F1, "Opens and closes the in-game boss editor during a level.");
             ModMenuKey = Config.Bind("Mod menu", "ToggleKey", UnityEngine.KeyCode.F2, "Opens the mod menu from anywhere (it also has a MODS button on the main menu).");
+            BossMenuKey = Config.Bind("Bosses", "ToggleKey", UnityEngine.KeyCode.F4, "Opens the Bosses menu, where you make and play your own bosses (it also has a BOSSES button on the main menu).");
             UiFont = Config.Bind("UI", "Font", "", "Name (or part of it) of the game font the menus use. Empty = pick automatically. LogOutput.log lists the choices.");
             new Harmony("riptid.jsb.sunloader").PatchAll();
             AddComponent<BossEditorUI>();
@@ -142,7 +144,9 @@ namespace SunLoader
                     File.WriteAllText(Path.Combine(Plugin.Root, "attack_types_seen.json"), BossFile.SeenTypes().ToJsonString(Plugin.Pretty));
                 }
 
-                var customPath = Path.Combine(Plugin.Root, id + ".json");
+                // A boss started from the Bosses menu wins over this level's own replacement.
+                var bossPath = CustomBosses.FileFor(id);
+                var customPath = bossPath ?? Path.Combine(Plugin.Root, id + ".json");
                 if (File.Exists(customPath))
                 {
                     stage = "load custom boss";
@@ -155,7 +159,7 @@ namespace SunLoader
                 }
 
                 stage = "attach editor";
-                EditorSession.Attach(__instance, song, id);
+                EditorSession.Attach(__instance, song, id, bossPath);
             }
             catch (Exception e)
             {

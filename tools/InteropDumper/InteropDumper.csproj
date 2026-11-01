@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <!-- Lists the types, fields and method signatures in an interop DLL, to find things to hook.
-       Usage: dotnet run -- "<game>\BepInEx\interop\Assembly-CSharp.dll" [TypeName ...] -->
+       Usage: dotnet run "<game>\BepInEx\interop\Assembly-CSharp.dll" [TypeName ...] -->
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>net6.0</TargetFramework>

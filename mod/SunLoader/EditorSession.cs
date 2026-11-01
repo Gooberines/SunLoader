@@ -35,6 +35,10 @@ namespace SunLoader
     static class EditorSession
     {
         public static string Level;
+        // The Bosses-menu boss being edited (bosses\<name>.json), or null when editing a level's replacement.
+        public static string BossPath;
+        public static bool IsCustomBoss => BossPath != null;
+        public static string DisplayName => IsCustomBoss ? Path.GetFileNameWithoutExtension(BossPath) : Level;
         public static List<EditSpawn> Spawns = new();
         public static float Bpm = 120;
         public static string MusicFile;         // a file in SunLoader\music, or null for the level's own song
@@ -48,14 +52,15 @@ namespace SunLoader
 
         public static bool InLevel => Valid();
 
-        public static void Attach(LogicSpawnCreator spawner, MetaSong song, string level)
+        public static void Attach(LogicSpawnCreator spawner, MetaSong song, string level, string bossPath = null)
         {
             spawnerPtr = spawner.Pointer;
             songPtr = song.Pointer;
             if (Types.Count == 0) LoadTypes();
-            if (Level != level)
+            if (Level != level || BossPath != bossPath)
             {
                 Level = level;
+                BossPath = bossPath;
                 Load();
             }
             else if (Dirty)
@@ -94,7 +99,7 @@ namespace SunLoader
 
         public static AttackType TypeInfo(string type) => Types.FirstOrDefault(t => t.Type == type);
 
-        static string CustomPath => Path.Combine(Plugin.Root, Level + ".json");
+        static string CustomPath => BossPath ?? Path.Combine(Plugin.Root, Level + ".json");
         static string DumpPath => Path.Combine(Plugin.DumpDir, Level + ".json");
         public static bool HasCustomFile => File.Exists(CustomPath);
 
@@ -179,13 +184,14 @@ namespace SunLoader
                 }
                 spawns.Add(o);
             }
-            return new JsonObject
-            {
-                ["level"] = Level,
-                ["music"] = MusicFile,
-                ["editor"] = new JsonObject { ["bpm"] = Bpm },
-                ["layers"] = new JsonArray { new JsonObject { ["layer"] = 0, ["spawns"] = spawns } },
-            };
+            var file = new JsonObject();
+            // Bosses-menu bosses also say their name and which level they play on.
+            if (IsCustomBoss) { file["name"] = DisplayName; file["stage"] = Level; }
+            file["level"] = Level;
+            file["music"] = MusicFile;
+            file["editor"] = new JsonObject { ["bpm"] = Bpm };
+            file["layers"] = new JsonArray { new JsonObject { ["layer"] = 0, ["spawns"] = spawns } };
+            return file;
         }
 
         // ---------- game control ----------

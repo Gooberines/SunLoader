@@ -90,6 +90,7 @@ namespace SunLoader
             if (!Directory.Exists(Plugin.Root)) return;
             foreach (var path in Directory.GetFiles(Plugin.Root, "*.json"))
                 Get(ForLevel(Path.GetFileNameWithoutExtension(path)));
+            foreach (var boss in CustomBosses.List()) Get(boss.Music);
         }
 
         static void Keep(string file, AudioClip clip)
@@ -154,34 +155,67 @@ namespace SunLoader
         }
     }
 
-    // When a level's song is set, swap in the boss file's song if it has one.
+    // When a level's song is set, swap in the boss's song if it has one: the Bosses-menu boss
+    // playing on that level, otherwise the level's boss file.
     [HarmonyPatch(typeof(ModelStoryCheckpoint), nameof(ModelStoryCheckpoint.SetAudioClip))]
     static class SetAudioClipPatch
     {
         static bool swapping;
+        // Each level's own song, kept while ours is swapped in so it can be put back.
+        static readonly Dictionary<IntPtr, AudioClip> originals = new();
 
         static void Postfix(ModelStoryCheckpoint __instance)
         {
             if (swapping || !SafeRead.IsObjectOf<ModelStoryCheckpoint>(__instance.Pointer)) return;
+            // The game just set the level's own song.
+            var clip = SafeRead.Field<AudioClip>(__instance, "audioClip");
+            if (clip != null) { clip.hideFlags = HideFlags.HideAndDontSave; originals[__instance.Pointer] = clip; }
+            Apply(__instance);
+        }
+
+        // Gives the level the song it should have now. Also used when a Bosses-menu boss starts,
+        // because a level whose files are already loaded doesn't set its song again.
+        public static void Apply(ModelStoryCheckpoint level)
+        {
             try
             {
                 string name = null;
-                try { name = __instance.name; } catch { }
-                name = SetMetaSongPatch.FileId(name, __instance.nId);
-                var file = Music.ForLevel(name);
-                if (file == null) return;
-                var clip = Music.Get(file);
-                if (clip == null)
+                try { name = level.name; } catch { }
+                name = SetMetaSongPatch.FileId(name, level.nId);
+                var boss = CustomBosses.Active;
+                var file = boss != null && boss.Stage == name ? boss.Music : Music.ForLevel(name);
+                AudioClip clip;
+                if (file == null)
                 {
-                    Plugin.Logger.LogWarning($"Custom music '{file}' for '{name}' isn't ready" + (Music.IsLoading(file) ? " yet (still loading; restart the level)" : ""));
-                    return;
+                    if (!originals.TryGetValue(level.Pointer, out clip) || clip == null) return;
+                }
+                else
+                {
+                    clip = Music.Get(file);
+                    if (clip == null)
+                    {
+                        Plugin.Logger.LogWarning($"Custom music '{file}' for '{name}' isn't ready" + (Music.IsLoading(file) ? " yet (still loading; restart the level)" : ""));
+                        return;
+                    }
+                    if (!originals.ContainsKey(level.Pointer))
+                    {
+                        var own = SafeRead.Field<AudioClip>(level, "audioClip");
+                        if (own != null) { own.hideFlags = HideFlags.HideAndDontSave; originals[level.Pointer] = own; }
+                    }
                 }
                 swapping = true;
-                __instance.SetAudioClip(clip);
-                Plugin.Logger.LogInfo($"Playing '{file}' for '{name}'");
+                level.SetAudioClip(clip);
+                Plugin.Logger.LogInfo($"Playing '{file ?? "its own song"}' for '{name}'");
             }
             catch (Exception e) { Plugin.Logger.LogError("Custom music failed: " + e); }
             finally { swapping = false; }
+        }
+
+        // After a Bosses-menu boss: every level gets its usual song back.
+        public static void RestoreOriginals()
+        {
+            foreach (var ptr in originals.Keys.ToList())
+                if (SafeRead.IsObjectOf<ModelStoryCheckpoint>(ptr)) Apply(new ModelStoryCheckpoint(ptr));
         }
     }
 

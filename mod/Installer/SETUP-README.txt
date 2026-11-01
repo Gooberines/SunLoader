@@ -12,6 +12,7 @@ HOW TO INSTALL
    BepInEx sets itself up; that only happens once.
 
 IN THE GAME
+- BOSSES button on the main menu, or F4: make and play your own bosses.
 - MODS button on the main menu, or F2 anywhere: the mod menu.
 - F1 during a level: the boss editor.
 

@@ -20,6 +20,8 @@ namespace SunLoader
             EditorGui.OnGUI();
             try { EditorGui.TryBiggerFont(); ModMenu.OnGUI(EditorGui.Scale, EditorGui.VW); }
             catch (Exception e) { Plugin.Logger.LogError("Mod menu: " + e); ModMenu.Open = false; }
+            try { EditorGui.TryBiggerFont(); BossMenu.OnGUI(EditorGui.Scale, EditorGui.VW); }
+            catch (Exception e) { Plugin.Logger.LogError("Bosses menu: " + e); BossMenu.Open = false; }
         }
     }
 
@@ -95,8 +97,12 @@ namespace SunLoader
                 if (open && playing) Theme.BeatFromMusic(playhead, EditorSession.Bpm);
                 ModLoader.Update();
                 if (Input.GetKeyDown(Plugin.ModMenuKey.Value)) ModMenu.Toggle();
+                if (Input.GetKeyDown(Plugin.BossMenuKey.Value)) BossMenu.Toggle();
+                CustomBosses.Update();
                 NoDamage.On = (noDamageToggle || preview != null) && EditorSession.InLevel;
                 if (Input.GetKeyDown(Plugin.EditorKey.Value)) Toggle();
+                // A boss started with Edit from the Bosses menu opens the editor once its level is up.
+                if (!open && CustomBosses.EditOnStart && EditorSession.InLevel && EditorSession.IsCustomBoss) { CustomBosses.EditOnStart = false; Toggle(); }
                 if (!open) return;
                 if (!EditorSession.InLevel) { Close(false); return; }
                 Cursor.visible = true;
@@ -135,7 +141,8 @@ namespace SunLoader
             playhead = Math.Max(0, EditorSession.MusicMs());
             scrollMs = playhead - 3000;
             if (!helpShownOnce) { showHelp = helpShownOnce = true; }
-            Say($"Editing {EditorSession.Level}" + (EditorSession.HasCustomFile ? " (your saved boss)" : " (the original level)"));
+            Say(EditorSession.IsCustomBoss ? $"Editing your boss '{EditorSession.DisplayName}' on {EditorSession.Level}"
+                : $"Editing {EditorSession.Level}" + (EditorSession.HasCustomFile ? " (your saved boss)" : " (the original level)"));
         }
 
         static void Close(bool resume)
@@ -241,7 +248,8 @@ namespace SunLoader
         {
             EditorSession.Save();
             Music.Get(EditorSession.MusicFile);
-            Say($"Saved BepInEx\\SunLoader\\{EditorSession.Level}.json");
+            Say(EditorSession.IsCustomBoss ? $"Saved your boss '{EditorSession.DisplayName}' (Bosses menu: {Plugin.BossMenuKey.Value})"
+                : $"Saved BepInEx\\SunLoader\\{EditorSession.Level}.json");
         }
 
         static float Snap(float ms)
@@ -538,14 +546,14 @@ namespace SunLoader
             Fill(new Rect(0, r.yMax - 3, VW, 3), Pink);
             float x = 10, y = 9, h = 28;
             Theme.Title(new Rect(x, y - 3, 180, 40), "BOSS EDITOR", Pink, 20);
-            Text(new Rect(x + 168, y + 4, 120, h), EditorSession.Level + (EditorSession.Dirty ? " *" : ""), Color.white, 13); x += 295;
+            Text(new Rect(x + 168, y + 4, 120, h), EditorSession.DisplayName + (EditorSession.Dirty ? " *" : ""), EditorSession.IsCustomBoss ? Cyan : Color.white, 13); x += 295;
 
             if (Button(new Rect(x, y, 90, h), playing ? "Pause" : "Play", "Play from the yellow line with your changes (Space)")) { if (playing) Pause(); else Play(); }
             x += 95;
             if (Button(new Rect(x, y, 40, h), "|<", "Back to the start")) { if (playing) Pause(); playhead = 0; scrollMs = -500; }
             x += 45;
             Text(new Rect(x, y + 3, 90, h), Fmt(playhead), Yellow); x += 95;
-            if (Button(new Rect(x, y, 70, h), "Save", "Save your boss (Ctrl+S). It loads every time you play this level.", color: EditorSession.Dirty ? new Color(0.5f, 0.15f, 0.3f) : null)) Save();
+            if (Button(new Rect(x, y, 70, h), "Save", EditorSession.IsCustomBoss ? "Save your boss (Ctrl+S). Play it again from the Bosses menu." : "Save your boss (Ctrl+S). It loads every time you play this level.", color: EditorSession.Dirty ? new Color(0.5f, 0.15f, 0.3f) : null)) Save();
             x += 75;
             if (Button(new Rect(x, y, 70, h), "Undo", "Undo the last change (Ctrl+Z)")) Undo();
             x += 85;

@@ -156,7 +156,7 @@ namespace SunLoaderInstaller
                     MessageBox.Show(this,
                         "Sun Loader is installed!\n\n" +
                         "The first time you start the game it takes a minute or two longer while BepInEx sets itself up. That only happens once.\n\n" +
-                        "In the game: click MODS on the main menu (or press F2) for the mod menu, and press F1 in a level for the boss editor.",
+                        "In the game: click BOSSES on the main menu (or press F4) to make your own bosses, MODS (or F2) for the mod menu, and press F1 in a level for the boss editor.",
                         "Done", MessageBoxButtons.OK, MessageBoxIcon.Information);
             }
             catch (Exception e)

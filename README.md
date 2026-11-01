@@ -6,6 +6,9 @@
 A mod loader and in-game boss editor for **Just Shapes & Beats** (Steam, Windows), built on
 [BepInEx 6](https://github.com/BepInEx/BepInEx).
 
+- **Bosses menu:** a **BOSSES** button on the main menu (or **F4**) to make your own bosses, separate from the game's
+  levels and playlists. Name one, pick a stage, and the editor opens; play, edit, rename, copy or delete them from the
+  list.
 - **Boss editor:** press **F1** in any level to place attacks on the game screen, set their timing and settings,
   preview them live, and save your own boss over that level.
 - **Mod menu:** a **MODS** button on the main menu (or **F2** anywhere) lists DLL mods, loads them on the spot or at
@@ -35,11 +38,16 @@ To install by hand instead:
 
 | Where | Key | What |
 |---|---|---|
+| Main menu | **BOSSES** button / **F4** | Bosses menu: make, play, edit and manage your own bosses |
 | Main menu | **MODS** button / **F2** | Mod menu: load DLLs from `BepInEx\mods`, auto-load, turn plugins on/off |
 | In a level | **F1** | Boss editor (it has its own Help screen) |
 | Boss editor | Space, Q/E, Ctrl+Z/C/V/D/S | Play/pause, rotate, undo, copy/paste, duplicate, save |
 
-- **Bosses** are saved to `BepInEx\SunLoader\<level name>.json`. That level plays your boss from then on.
+- **Your own bosses** (Bosses menu) are saved to `BepInEx\SunLoader\bosses\<name>.json`. Each plays on a *stage*: a
+  game level whose scene and length it uses, with that level's song or one of yours. They don't change the game's
+  levels. Deleted ones go to `bosses\deleted`.
+- **Level replacements** (F1 in a normal level) are saved to `BepInEx\SunLoader\<level name>.json`. That level plays
+  your boss from then on.
 - **Songs** go in `BepInEx\SunLoader\music`.
 - **Settings** are in `BepInEx\config\riptid.jsb.sunloader.cfg`: keys, unlock-all, and which game font the menus use.
 
@@ -91,6 +99,8 @@ The files in `mod/SunLoader`:
 | `SafeRead.cs` | Memory-checked reads of game objects, which avoid crashes from IL2CPP code folding |
 | `EditorSession.cs` | The level being edited, loading/saving, applying to the game, seeking the song |
 | `BossEditorUI.cs` | The F1 editor UI (Unity IMGUI, hand-drawn controls) |
+| `CustomBosses.cs` | Bosses-menu boss files, the stage list, and starting a boss's level |
+| `BossMenu.cs` | The Bosses menu UI |
 | `AttackInfo.cs` | Attack categories, descriptions, editor shapes |
 | `Music.cs` | Custom songs (WAV decoding) and no-damage mode |
 | `Pictures.cs` | Attack screenshots for the editor |
