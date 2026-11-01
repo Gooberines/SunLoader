@@ -133,7 +133,9 @@ namespace SunLoader
         static void Toggle()
         {
             if (open) { Close(true); return; }
-            if (!EditorSession.InLevel) { Say("Start a level first, then press " + Plugin.EditorKey.Value); return; }
+            // The last level's spawner can outlive the level, so the menus count as "not in a level" too.
+            if (!EditorSession.InLevel || MainMenuSeen.OnMainMenu || PlaylistMenuSeen.OnPlaylistMenu)
+            { Say("Start a level first, then press " + Plugin.EditorKey.Value); return; }
             if (EditorSession.Types.Count == 0) { Say("No attack list yet; play any level once first"); return; }
             if (!musicPreloaded) { musicPreloaded = true; Music.Preload(); }
             open = true;
@@ -151,18 +153,27 @@ namespace SunLoader
             open = false;
             focus = null;
             if (!resume) return;
-            if (EditorSession.AppliedDirty) EditorSession.ApplyToGame(playhead);
+            if (EditorSession.AppliedDirty) Apply(playhead);
             EditorSession.SetPaused(false);
             playing = false;
         }
 
         static void Play()
         {
-            if (EditorSession.AppliedDirty) EditorSession.ApplyToGame(playhead);
+            if (EditorSession.AppliedDirty) Apply(playhead);
             else EditorSession.Seek(playhead);
             EditorSession.SetPaused(false);
             playing = true;
         }
+
+        // Puts the editor's attacks into the game. A boss with no checkpoint isn't loaded (the
+        // level would crash), so the game keeps playing what it had.
+        static void Apply(float ms)
+        {
+            if (!EditorSession.ApplyToGame(ms) && NoCheckpoints) Say("Add a CheckPoint first: every level needs one (its last checkpoint ends the level)");
+        }
+
+        static bool NoCheckpoints => !EditorSession.Spawns.Any(s => s.Type == "CheckPoint");
 
         static void Pause()
         {
@@ -190,7 +201,7 @@ namespace SunLoader
             var ok = EditorSession.ApplyToGame(from);
             EditorSession.Spawns.Remove(temp);
             EditorSession.AppliedDirty = true;
-            if (!ok) { Pictures.Trying(null); Say("Couldn't preview: the level isn't ready"); return; }
+            if (!ok) { Pictures.Trying(null); Say(NoCheckpoints ? "Couldn't preview: add a CheckPoint first" : "Couldn't preview: the level isn't ready"); return; }
             preview = new PreviewRun { Type = type, Capture = capture, From = from, CaptureAt = temp.Time + 450, EndAt = temp.Time + 2200 };
             EditorSession.SetPaused(false);
             playing = true;

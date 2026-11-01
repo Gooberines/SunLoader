@@ -41,7 +41,8 @@ namespace SunLoader
         // Set once the active boss's spawner has started, so the menus we pass through on the
         // way in don't count as leaving it.
         static bool started;
-        static float launchedAt;
+        // When the level was first seen with no menu up (-1 = not yet).
+        static float levelSince = -1;
 
         // ---------- files ----------
 
@@ -113,6 +114,28 @@ namespace SunLoader
             File.WriteAllText(path, file.ToJsonString(Plugin.Pretty));
             Plugin.Logger.LogInfo($"Bosses: created '{name}' on '{stage}' ({spawns.Count} attacks)");
             return List().FirstOrDefault(b => b.Path == path);
+        }
+
+        // Every level ends on a checkpoint, and a level with none crashes the game. A boss made
+        // before its stage was ever played has none (they come from the stage's dump), so they're
+        // added from the dump, which exists by the time the stage's spawner starts.
+        public static void EnsureCheckpoints(string path, string stage)
+        {
+            var dump = Path.Combine(Plugin.DumpDir, stage + ".json");
+            if (!File.Exists(path) || !File.Exists(dump)) return;
+            var file = JsonNode.Parse(File.ReadAllText(path)).AsObject();
+            var layers = file["layers"]?.AsArray();
+            if (layers == null || layers.Count == 0) file["layers"] = layers = new JsonArray { new JsonObject { ["layer"] = 0, ["spawns"] = new JsonArray() } };
+            if (layers.Any(l => l["spawns"]?.AsArray().Any(s => (string)s?["type"] == "CheckPoint") == true)) return;
+            var target = layers[0]["spawns"]?.AsArray();
+            if (target == null) layers[0]["spawns"] = target = new JsonArray();
+            int added = 0;
+            foreach (var layer in JsonNode.Parse(File.ReadAllText(dump))["layers"]?.AsArray() ?? new JsonArray())
+                foreach (var s in layer["spawns"]?.AsArray() ?? new JsonArray())
+                    if ((string)s?["type"] == "CheckPoint") { target.Add(JsonNode.Parse(s.ToJsonString())); added++; }
+            if (added == 0) return;
+            File.WriteAllText(path, file.ToJsonString(Plugin.Pretty));
+            Plugin.Logger.LogInfo($"Bosses: added {stage}'s {added} checkpoints to {Path.GetFileName(path)}");
         }
 
         public static void Rename(BossProject b, string newName)
@@ -201,7 +224,7 @@ namespace SunLoader
             Active = b;
             EditOnStart = edit;
             started = false;
-            launchedAt = Time.realtimeSinceStartup;
+            levelSince = -1;
             Music.Get(b.Music);   // start loading the song now so it's ready when the level is
             try
             {
@@ -243,14 +266,18 @@ namespace SunLoader
         // Called every frame. Back on the main menu or the playlist screen means the boss run is over.
         public static void Update()
         {
-            if (Active == null || !started || Time.realtimeSinceStartup - launchedAt < 3) return;
-            if (MainMenuSeen.OnMainMenu || PlaylistMenuSeen.OnPlaylistMenu)
-            {
-                Plugin.Logger.LogInfo($"Bosses: left '{Active.Name}'");
-                Active = null;
-                EditOnStart = false;
-                SetAudioClipPatch.RestoreOriginals();
-            }
+            if (Active == null || !started) return;
+            var onMenu = MainMenuSeen.OnMainMenu || PlaylistMenuSeen.OnPlaylistMenu;
+            // The menu we started from keeps updating for a moment while the level loads, so only
+            // count leaving once the level has been on screen, menu-free, for half a second.
+            if (!onMenu) { if (levelSince < 0) levelSince = Time.realtimeSinceStartup; return; }
+            var wasInLevel = levelSince >= 0 && Time.realtimeSinceStartup - levelSince >= 0.5f;
+            levelSince = -1;
+            if (!wasInLevel) return;
+            Plugin.Logger.LogInfo($"Bosses: left '{Active.Name}'");
+            Active = null;
+            EditOnStart = false;
+            SetAudioClipPatch.RestoreOriginals();
         }
     }
 

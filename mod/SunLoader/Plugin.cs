@@ -148,8 +148,9 @@ namespace SunLoader
                 if (!File.Exists(dumpPath))
                 {
                     stage = "dump level";
+                    var timer = System.Diagnostics.Stopwatch.StartNew();
                     File.WriteAllText(dumpPath, BossFile.Export(id, song).ToJsonString(Plugin.Pretty));
-                    Plugin.Logger.LogInfo($"Dumped level '{id}' -> {dumpPath}");
+                    Plugin.Logger.LogInfo($"Dumped level '{id}' in {timer.ElapsedMilliseconds} ms -> {dumpPath}");
                     stage = "write seen attack types";
                     File.WriteAllText(Path.Combine(Plugin.Root, "attack_types_seen.json"), BossFile.SeenTypes().ToJsonString(Plugin.Pretty));
                 }
@@ -157,6 +158,8 @@ namespace SunLoader
                 // A boss started from the Bosses menu wins over this level's own replacement.
                 var bossPath = CustomBosses.FileFor(id);
                 var customPath = bossPath ?? Path.Combine(Plugin.Root, id + ".json");
+                stage = "add checkpoints";
+                CustomBosses.EnsureCheckpoints(customPath, id);
                 if (File.Exists(customPath))
                 {
                     stage = "load custom boss";
@@ -241,7 +244,7 @@ namespace SunLoader
                 }
                 types.Add(new JsonObject
                 {
-                    ["type"] = ModelId(model),
+                    ["type"] = ModelId(model.Pointer),
                     ["warningDefault"] = model.getWarningDefault(),
                     ["isCheckPoint"] = model.isCheckPoint,
                     ["usesPosition"] = usesPosition,
@@ -251,26 +254,36 @@ namespace SunLoader
             return new JsonObject { ["attackTypes"] = types };
         }
 
+        // Reads every attack in the level. Only plain field reads on raw pointers: no game code
+        // runs and no interop objects are made, so levels with thousands of attacks read quickly
+        // and safely (the old way, with a wrapper and game calls per value, could crash the game).
         public static JsonObject Export(string levelId, MetaSong song)
         {
+            SafeRead.BeginBatch();
+            try { return ExportBatch(levelId, song); }
+            finally { SafeRead.EndBatch(); }
+        }
+
+        static JsonObject ExportBatch(string levelId, MetaSong song)
+        {
             var layers = new JsonArray();
-            var group = SafeRead.Field<MetaSongLayerGroup>(song, "metaLayerGroup");
-            var metaLayers = SafeRead.Field<Il2CppList.List<MetaSongLayer>>(group, "metaLayers");
-            Plugin.Logger.LogInfo($"  layerGroup={group != null}, layers={metaLayers?.Count ?? -1}");
-            if (metaLayers != null)
+            var group = SafeRead.Pointer(song.Pointer, "metaLayerGroup");
+            var metaLayers = SafeRead.IsObjectOf<MetaSongLayerGroup>(group) ? SafeRead.Pointer(group, "metaLayers") : IntPtr.Zero;
+            var layerCount = SafeRead.ListCount(metaLayers);
+            Plugin.Logger.LogInfo($"  layers={layerCount}");
+            if (layerCount >= 0)
             {
-                for (int l = 0; l < metaLayers.Count; l++)
+                for (int l = 0; l < layerCount; l++)
                 {
-                    var layerPtr = SafeRead.ListItemPointer(metaLayers, l);
-                    if (!SafeRead.IsObjectOf<MetaSongLayer>(layerPtr)) continue;
-                    var spawns = SafeRead.Field<Il2CppList.List<MetaSpawn>>(new MetaSongLayer(layerPtr), "metaSpawns");
-                    layers.Add(new JsonObject { ["layer"] = l, ["spawns"] = ExportSpawns(spawns) });
+                    var layer = SafeRead.ListItem(metaLayers, l);
+                    if (!SafeRead.IsObjectOf<MetaSongLayer>(layer)) continue;
+                    layers.Add(new JsonObject { ["layer"] = l, ["spawns"] = ExportSpawns(SafeRead.Pointer(layer, "metaSpawns")) });
                 }
             }
             else
             {
-                var inOrder = SafeRead.Field<Il2CppList.List<MetaSpawn>>(song, "allSpawnsInOrder");
-                Plugin.Logger.LogInfo($"  spawnsInOrder={inOrder?.Count ?? -1}");
+                var inOrder = SafeRead.Pointer(song.Pointer, "allSpawnsInOrder");
+                Plugin.Logger.LogInfo($"  spawnsInOrder={SafeRead.ListCount(inOrder)}");
                 layers.Add(new JsonObject { ["layer"] = 0, ["spawns"] = ExportSpawns(inOrder) });
             }
 
@@ -282,41 +295,55 @@ namespace SunLoader
             };
         }
 
-        static JsonArray ExportSpawns(Il2CppList.List<MetaSpawn> metaSpawns)
+        static JsonArray ExportSpawns(IntPtr list)
         {
             var spawns = new JsonArray();
-            for (int s = 0; metaSpawns != null && s < metaSpawns.Count; s++)
+            var count = SafeRead.ListCount(list);
+            for (int s = 0; s < count; s++)
             {
-                var ptr = SafeRead.ListItemPointer(metaSpawns, s);
+                var ptr = SafeRead.ListItem(list, s);
                 if (!SafeRead.IsObjectOf<MetaSpawn>(ptr)) { spawns.Add(new JsonObject { ["error"] = "unreadable spawn" }); continue; }
-                try { spawns.Add(ExportSpawn(new MetaSpawn(ptr))); }
+                try { spawns.Add(ExportSpawn(ptr)); }
                 catch (Exception e) { spawns.Add(new JsonObject { ["error"] = e.Message }); }
             }
             return spawns;
         }
 
-        static JsonObject ExportSpawn(MetaSpawn spawn)
+        static JsonObject ExportSpawn(IntPtr spawn)
         {
-            var model = SafeRead.Field<ModelSpawn>(spawn, "modelSpawn");
-            var group = SafeRead.Field<MetaSpawnParamGroup>(spawn, "metaParams");
-            var timeline = SafeRead.Field<MetaSpawnTimeline>(group, "metaTimeline");
-            var pos = SafeRead.Field<MetaSpawnParamPosition>(group, "metaPosition");
+            var model = SafeRead.Pointer(spawn, "modelSpawn");
+            if (!SafeRead.IsObjectOf<ModelSpawn>(model)) model = IntPtr.Zero;
+            var group = SafeRead.Pointer(spawn, "metaParams");
+            var timeline = SafeRead.Pointer(group, "metaTimeline");
+            var pos = SafeRead.Pointer(group, "metaPosition");
 
             var type = ModelId(model);
             var parameters = ReadParams(type, group);
-            var typeIndex = model?.indexInEnum ?? -1;
+            var typeIndex = model == IntPtr.Zero ? -1 : SafeRead.Int(model, "indexInEnum");
             RecordSeen(type, typeIndex, parameters);
             var json = new JsonObject { ["type"] = type, ["typeIndex"] = typeIndex };
-            if (timeline != null)
+            if (SafeRead.IsObjectOf<MetaSpawnTimeline>(timeline))
             {
-                json["time"] = timeline.time();
-                json["warning"] = timeline.warningAsNumber();
-                json["outro"] = timeline.outroAsNumber();
+                json["time"] = Number(SafeRead.Pointer(timeline, "timeInMs"));
+                json["warning"] = Number(SafeRead.Pointer(timeline, "warningTime"));
+                json["outro"] = Number(SafeRead.Pointer(timeline, "outroTime"));
             }
-            if (pos != null && pos.xUsed) json["x"] = pos.xAsNumber();
-            if (pos != null && pos.yUsed) json["y"] = pos.yAsNumber();
+            if (SafeRead.IsObjectOf<MetaSpawnParamPosition>(pos))
+            {
+                if (SafeRead.Bool(pos, "xUsed")) json["x"] = Number(SafeRead.Pointer(pos, "xRelativeToScreen"));
+                if (SafeRead.Bool(pos, "yUsed")) json["y"] = Number(SafeRead.Pointer(pos, "yRelativeToScreen"));
+            }
             if (parameters.Count > 0) json["params"] = parameters;
             return json;
+        }
+
+        // A MetaValue as a number: its text if that's a number, otherwise its pre-computed value.
+        static float Number(IntPtr metaValue)
+        {
+            if (!SafeRead.IsObjectOf<MetaValue>(metaValue)) return 0;
+            var text = SafeRead.String(metaValue, "value");
+            if (text != null && float.TryParse(text, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var v)) return v;
+            return SafeRead.Float(metaValue, "bakedNumber");
         }
 
         static readonly HashSet<string> diagnosed = new();
@@ -324,48 +351,55 @@ namespace SunLoader
         // These are stored as the spawn's time/warning/outro and x/y, not as settings.
         static bool IsBuiltInParam(string key) => key == "timeline" || key == "pos";
 
-        // An attack's settings (size, speed, ...). The generic List<MetaParam> class check
-        // can fail even on a good list, so the list is checked by class name instead.
-        static JsonObject ReadParams(string type, MetaSpawnParamGroup group)
+        // An attack's settings (size, speed, ...), as the text the level file gives them.
+        static JsonObject ReadParams(string type, IntPtr group)
         {
             var parameters = new JsonObject();
-            var listPtr = SafeRead.FieldPointer(group, "metaParams");
-            var className = SafeRead.ClassName(listPtr);
-            var isList = className.StartsWith("List");
-            var metaParams = isList ? new Il2CppList.List<MetaParam>(listPtr) : null;
-            int count = metaParams?.Count ?? -1, read = 0;
+            var list = SafeRead.Pointer(group, "metaParams");
+            int count = SafeRead.ListCount(list), read = 0;
             for (int i = 0; i < count; i++)
             {
-                var ptr = SafeRead.ListItemPointer(metaParams, i);
-                if (!SafeRead.IsObjectOf<MetaParam>(ptr)) continue;
-                var param = new MetaParam(ptr);
+                var param = SafeRead.ListItem(list, i);
+                if (!SafeRead.IsObjectOf<MetaParam>(param)) continue;
                 var key = SafeRead.String(param, "key");
                 if (key == null || IsBuiltInParam(key)) continue;
-                try { parameters[key] = param.getSimpleValue(); read++; }
-                catch (Exception e) { parameters[key] = null; Plugin.Logger.LogWarning($"  param '{key}' on {type}: {e.Message}"); }
+                var value = SafeRead.String(param, "simpleValue");
+                if (value == null)
+                {
+                    var meta = SafeRead.Pointer(param, "metaValue");
+                    if (SafeRead.IsObjectOf<MetaValue>(meta)) value = SafeRead.String(meta, "value");
+                }
+                parameters[key] = value;
+                read++;
             }
             // One line per attack type, so the log shows where reading stopped if it's empty.
             if (diagnosed.Add(type ?? "null"))
-            {
-                var first = count > 0 ? SafeRead.ListItemPointer(metaParams, 0) : IntPtr.Zero;
-                var firstKey = SafeRead.IsObjectOf<MetaParam>(first) ? SafeRead.ClassName(SafeRead.FieldPointer(new MetaParam(first), "key")) : "-";
-                Plugin.Logger.LogInfo($"  params for {type}: list={className}, count={count}, read={read}, first={SafeRead.ClassName(first)}, key={firstKey}");
-            }
+                Plugin.Logger.LogInfo($"  params for {type}: list={SafeRead.ClassName(list)}, count={count}, read={read}");
             return parameters;
         }
 
-        // ModelBase.id is a getter, not a field, so SafeRead can't reach it. Only call
-        // it on a model that SafeRead has already checked.
-        static string ModelId(ModelBase model)
+        // ModelBase.id is a getter, so it's game code: called once per attack type and remembered.
+        static readonly Dictionary<IntPtr, string> modelIds = new();
+
+        static string ModelId(IntPtr model)
         {
-            if (model == null) return null;
-            try { return model.id; } catch { return null; }
+            if (model == IntPtr.Zero) return null;
+            if (modelIds.TryGetValue(model, out var id)) return id;
+            try { id = new ModelSpawn(model).id; } catch { id = null; }
+            return modelIds[model] = id;
         }
 
         // Replaces every attack in the song with the ones in the file.
         // Returns how many were added, or -1 if the song couldn't be edited.
         public static int Import(MetaSong song, JsonNode file)
         {
+            // A level with no checkpoint crashes the game (each level ends on one), so such a
+            // boss isn't loaded and the level keeps its own attacks.
+            if (!(file["layers"]?.AsArray().Any(l => l["spawns"]?.AsArray().Any(s => (string)s?["type"] == "CheckPoint") == true) ?? false))
+            {
+                Plugin.Logger.LogWarning("This boss has no checkpoints, so it wasn't loaded (a level needs at least its last checkpoint).");
+                return -1;
+            }
             var group = SafeRead.Field<MetaSongLayerGroup>(song, "metaLayerGroup");
             var metaLayers = SafeRead.Field<Il2CppList.List<MetaSongLayer>>(group, "metaLayers");
             if (metaLayers == null) return ImportFlat(song, file);

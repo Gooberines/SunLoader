@@ -54,6 +54,80 @@ namespace SunLoader
             return IsReadable(slot, IntPtr.Size) ? Marshal.ReadIntPtr(slot) : IntPtr.Zero;
         }
 
+        // ---------- pointer-only reads ----------
+        // These work on raw object pointers and never create interop wrappers or call game code,
+        // for reading thousands of objects at once (a level's attacks) without any churn.
+
+        static readonly System.Collections.Generic.Dictionary<(IntPtr klass, string name), int> offsets = new();
+
+        // Byte offset of a field in the object's class (or a parent class), or -1.
+        static int Offset(IntPtr obj, string fieldName)
+        {
+            if (!IsReadable(obj, 16)) return -1;
+            var klass = Marshal.ReadIntPtr(obj);
+            if (klass == IntPtr.Zero) return -1;
+            if (offsets.TryGetValue((klass, fieldName), out var offset)) return offset;
+            if (!IsReadable(klass, 64)) return -1;
+            var field = IntPtr.Zero;
+            for (var k = klass; k != IntPtr.Zero && field == IntPtr.Zero; k = IL2CPP.il2cpp_class_get_parent(k))
+                field = IL2CPP.il2cpp_class_get_field_from_name(k, fieldName);
+            offset = field == IntPtr.Zero ? -1 : (int)IL2CPP.il2cpp_field_get_offset(field);
+            offsets[(klass, fieldName)] = offset;
+            return offset;
+        }
+
+        static IntPtr Slot(IntPtr obj, string fieldName, int size)
+        {
+            var offset = Offset(obj, fieldName);
+            if (offset < 0) return IntPtr.Zero;
+            var slot = obj + offset;
+            return IsReadable(slot, size) ? slot : IntPtr.Zero;
+        }
+
+        public static IntPtr Pointer(IntPtr obj, string fieldName)
+        {
+            var slot = Slot(obj, fieldName, IntPtr.Size);
+            return slot == IntPtr.Zero ? IntPtr.Zero : Marshal.ReadIntPtr(slot);
+        }
+
+        public static string String(IntPtr obj, string fieldName)
+        {
+            var ptr = Pointer(obj, fieldName);
+            return ClassName(ptr) == "String" ? IL2CPP.Il2CppStringToManaged(ptr) : null;
+        }
+
+        public static bool Bool(IntPtr obj, string fieldName)
+        {
+            var slot = Slot(obj, fieldName, 1);
+            return slot != IntPtr.Zero && Marshal.ReadByte(slot) != 0;
+        }
+
+        public static float Float(IntPtr obj, string fieldName)
+        {
+            var slot = Slot(obj, fieldName, 4);
+            return slot == IntPtr.Zero ? 0 : BitConverter.Int32BitsToSingle(Marshal.ReadInt32(slot));
+        }
+
+        public static int Int(IntPtr obj, string fieldName)
+        {
+            var slot = Slot(obj, fieldName, 4);
+            return slot == IntPtr.Zero ? -1 : Marshal.ReadInt32(slot);
+        }
+
+        // A List<T>'s length and items, read from its _size and _items fields.
+        public static int ListCount(IntPtr list) => ClassName(list).StartsWith("List") ? Int(list, "_size") : -1;
+
+        public static IntPtr ListItem(IntPtr list, int index)
+        {
+            var items = Pointer(list, "_items");
+            const int LengthOffset = 24, DataOffset = 32;
+            if (!IsReadable(items, DataOffset)) return IntPtr.Zero;
+            var length = Marshal.ReadInt64(items + LengthOffset);
+            if (index < 0 || index >= length) return IntPtr.Zero;
+            var slot = items + DataOffset + index * IntPtr.Size;
+            return IsReadable(slot, IntPtr.Size) ? Marshal.ReadIntPtr(slot) : IntPtr.Zero;
+        }
+
         public static bool IsObjectOf<T>(IntPtr ptr) where T : Il2CppObjectBase
         {
             if (ptr == IntPtr.Zero || !IsReadable(ptr, 16)) return false;
@@ -74,15 +148,35 @@ namespace SunLoader
             return name == IntPtr.Zero ? "?" : Marshal.PtrToStringAnsi(name);
         }
 
+        // Asking Windows about memory is a system call, too slow for the ~100,000 reads of a big
+        // level. During a batch (one synchronous read of a level on the main thread, when nothing
+        // frees memory), readable regions already checked are remembered.
+        static readonly (long start, long end)[] regions = new (long, long)[32];
+        static int regionCount, regionNext;
+        static bool batching;
+
+        public static void BeginBatch() { batching = true; regionCount = regionNext = 0; }
+        public static void EndBatch() { batching = false; regionCount = regionNext = 0; }
+
         public static bool IsReadable(IntPtr ptr, int size)
         {
             if (ptr == IntPtr.Zero) return false;
+            long p = (long)ptr, pEnd = p + size;
+            if (batching)
+                for (int i = 0; i < regionCount; i++)
+                    if (p >= regions[i].start && pEnd <= regions[i].end) return true;
             if (VirtualQuery(ptr, out var info, (UIntPtr)Marshal.SizeOf<MemoryInfo>()) == UIntPtr.Zero) return false;
             const uint Commit = 0x1000, NoAccess = 0x01, Guard = 0x100;
             const uint Readable = 0x02 | 0x04 | 0x08 | 0x20 | 0x40 | 0x80;
             if (info.State != Commit || (info.Protect & (NoAccess | Guard)) != 0 || (info.Protect & Readable) == 0) return false;
             var end = (long)info.BaseAddress + (long)info.RegionSize;
-            return (long)ptr + size <= end;
+            if (batching)
+            {
+                regions[regionNext] = ((long)info.BaseAddress, end);
+                regionNext = (regionNext + 1) % regions.Length;
+                regionCount = Math.Max(regionCount, regionNext == 0 ? regions.Length : regionNext);
+            }
+            return pEnd <= end;
         }
 
         [StructLayout(LayoutKind.Sequential)]
