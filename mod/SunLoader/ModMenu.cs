@@ -155,11 +155,14 @@ namespace SunLoader
     static class MainMenuSeen
     {
         public static int LastFrame = -100;
+        public static IntPtr Instance;   // the main menu object, so a boss can close it when it starts
 
         static void Postfix(UI_MainMenu02 __instance)
         {
             // update() is folded with other objects' update(); only count the real main menu.
-            if (SafeRead.IsObjectOf<UI_MainMenu02>(__instance.Pointer)) LastFrame = Time.frameCount;
+            if (!SafeRead.IsObjectOf<UI_MainMenu02>(__instance.Pointer)) return;
+            LastFrame = Time.frameCount;
+            Instance = __instance.Pointer;
         }
 
         public static bool OnMainMenu => Time.frameCount - LastFrame < 5;

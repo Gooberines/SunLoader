@@ -213,34 +213,76 @@ namespace SunLoader
         // ---------- playing ----------
 
         // Starts the boss's stage as a one-song practice run. Returns an error message or null.
+        // It goes the game's own way (main menu -> Playlist -> start), so the game closes its
+        // menus, background and music itself; Sun Loader only decides which song is "selected".
         public static string Launch(BossProject b, bool edit)
         {
             if (b.Error != null) return b.Error;
             var stage = Stage(b.Stage);
             if (stage == null || !SafeRead.IsObjectOf<ModelStoryCheckpoint>(stage.Checkpoint))
                 return $"The stage '{b.Stage}' isn't in this version of the game";
-            var level = new ModelStoryCheckpoint(stage.Checkpoint);
+            var fromMain = MainMenuSeen.OnMainMenu && SafeRead.IsObjectOf<UI_MainMenu02>(MainMenuSeen.Instance);
+            var fromPlaylist = PlaylistMenuSeen.OnPlaylistMenu && SafeRead.IsObjectOf<UI_Practice>(PlaylistMenuSeen.Instance);
+            if (!fromMain && !fromPlaylist) return "Go back to the main menu first, then start the boss from there.";
 
             Active = b;
             EditOnStart = edit;
             started = false;
             levelSince = -1;
+            pendingLevel = stage.Checkpoint;
+            pendingSince = Time.realtimeSinceStartup;
+            playlistSince = -1;
+            fadeCalled = false;
             Music.Get(b.Music);   // start loading the song now so it's ready when the level is
             try
             {
-                SetAudioClipPatch.Apply(level);
-                var list = new Il2CppList.List<ModelStoryCheckpoint>();
-                list.Add(level);
+                SetAudioClipPatch.Apply(new ModelStoryCheckpoint(stage.Checkpoint));
                 Plugin.Logger.LogInfo($"Bosses: starting '{b.Name}' on '{b.Stage}'" + (edit ? " (editor)" : ""));
-                ArcadeLevelScene.StartPractice(list, ModelGameDifficultyEnum.NORMAL);
+                // From the main menu, open the Playlist screen the normal way; Update starts the
+                // song once it's up. On the Playlist screen already, Update starts it right away.
+                if (!fromPlaylist) new UI_MainMenu02(MainMenuSeen.Instance).gotoPractice();
                 return null;
             }
             catch (Exception e)
             {
-                Active = null;
+                Cancel();
                 Plugin.Logger.LogError("Bosses: couldn't start the level: " + e);
                 return "The game wouldn't start the level: " + e.Message;
             }
+        }
+
+        // A launch in progress: the level to start, until its spawner starts.
+        static IntPtr pendingLevel;
+        static float pendingSince, playlistSince;
+        static bool fadeCalled;
+
+        // The one-song list the game should start while a launch is in progress, or null.
+        public static Il2CppList.List<ModelStoryCheckpoint> PendingList()
+        {
+            if (pendingLevel == IntPtr.Zero || !SafeRead.IsObjectOf<ModelStoryCheckpoint>(pendingLevel)) return null;
+            var list = new Il2CppList.List<ModelStoryCheckpoint>();
+            list.Add(new ModelStoryCheckpoint(pendingLevel));
+            return list;
+        }
+
+        static void Cancel() { pendingLevel = IntPtr.Zero; Active = null; EditOnStart = false; }
+
+        // Moves a launch along: once the Playlist screen has settled, tells it to go in game.
+        static void UpdateLaunch()
+        {
+            if (pendingLevel == IntPtr.Zero) return;
+            if (Time.realtimeSinceStartup - pendingSince > 20)
+            {
+                Plugin.Logger.LogWarning($"Bosses: '{Active?.Name}' didn't start in time; cancelled");
+                Cancel();
+                return;
+            }
+            if (fadeCalled || !PlaylistMenuSeen.OnPlaylistMenu || !SafeRead.IsObjectOf<UI_Practice>(PlaylistMenuSeen.Instance)) return;
+            if (playlistSince < 0) { playlistSince = Time.realtimeSinceStartup; return; }
+            if (Time.realtimeSinceStartup - playlistSince < 0.6f) return;   // let it finish opening
+            fadeCalled = true;
+            try { new UI_Practice(PlaylistMenuSeen.Instance).FadeToInGame(); }
+            catch (Exception e) { Plugin.Logger.LogError("Bosses: the Playlist screen wouldn't start the song: " + e); Cancel(); }
         }
 
         // The boss file to load for a level that's starting, or null to play it as usual.
@@ -260,12 +302,14 @@ namespace SunLoader
                 return null;
             }
             started = true;
+            pendingLevel = IntPtr.Zero;
             return Active.Path;
         }
 
         // Called every frame. Back on the main menu or the playlist screen means the boss run is over.
         public static void Update()
         {
+            UpdateLaunch();
             if (Active == null || !started) return;
             var onMenu = MainMenuSeen.OnMainMenu || PlaylistMenuSeen.OnPlaylistMenu;
             // The menu we started from keeps updating for a moment while the level loads, so only
@@ -281,15 +325,60 @@ namespace SunLoader
         }
     }
 
+    // While a boss is starting, the Playlist screen and the level start get the boss's stage as
+    // the one selected song, on Normal, whatever the player had selected there.
+    [HarmonyPatch]
+    static class LaunchPatches
+    {
+        static bool IsPlaylist(UI_Practice ui) => SafeRead.IsObjectOf<UI_Practice>(ui.Pointer);
+
+        [HarmonyPostfix, HarmonyPatch(typeof(UI_Practice), nameof(UI_Practice.GetAllSelectedSong))]
+        static void Selected(UI_Practice __instance, ref Il2CppList.List<ModelStoryCheckpoint> __result)
+        {
+            if (IsPlaylist(__instance) && CustomBosses.PendingList() is { } list) __result = list;
+        }
+
+        [HarmonyPostfix, HarmonyPatch(typeof(UI_Practice), nameof(UI_Practice.GetAllSelectedSongRandom))]
+        static void SelectedRandom(UI_Practice __instance, ref Il2CppList.List<ModelStoryCheckpoint> __result)
+        {
+            if (IsPlaylist(__instance) && CustomBosses.PendingList() is { } list) __result = list;
+        }
+
+        [HarmonyPostfix, HarmonyPatch(typeof(UI_Practice), nameof(UI_Practice.getIsHardSelected))]
+        static void Hard(UI_Practice __instance, ref bool __result)
+        {
+            if (IsPlaylist(__instance) && CustomBosses.PendingList() != null) __result = false;
+        }
+
+        [HarmonyPostfix, HarmonyPatch(typeof(UI_Practice), nameof(UI_Practice.getIsPartySelected))]
+        static void Party(UI_Practice __instance, ref bool __result)
+        {
+            if (IsPlaylist(__instance) && CustomBosses.PendingList() != null) __result = false;
+        }
+
+        // The last word: whatever list the screen passes on, the level start gets the boss's stage.
+        [HarmonyPrefix, HarmonyPatch(typeof(ArcadeLevelScene), nameof(ArcadeLevelScene.StartPractice), new[] { typeof(Il2CppList.List<ModelStoryCheckpoint>), typeof(ModelGameDifficulty) })]
+        static void Start(ref Il2CppList.List<ModelStoryCheckpoint> pPracticeList, ref ModelGameDifficulty diff)
+        {
+            if (CustomBosses.PendingList() is not { } list) return;
+            pPracticeList = list;
+            diff = ModelGameDifficultyEnum.NORMAL;
+            Plugin.Logger.LogInfo("Bosses: the game is starting the boss's stage");
+        }
+    }
+
     // Remembers when the playlist screen last updated (a practice run ends there).
     [HarmonyPatch(typeof(UI_Practice), nameof(UI_Practice.update))]
     static class PlaylistMenuSeen
     {
         static int lastFrame = -100;
+        public static IntPtr Instance;
 
         static void Postfix(UI_Practice __instance)
         {
-            if (SafeRead.IsObjectOf<UI_Practice>(__instance.Pointer)) lastFrame = Time.frameCount;
+            if (!SafeRead.IsObjectOf<UI_Practice>(__instance.Pointer)) return;
+            lastFrame = Time.frameCount;
+            Instance = __instance.Pointer;
         }
 
         public static bool OnPlaylistMenu => Time.frameCount - lastFrame < 5;
