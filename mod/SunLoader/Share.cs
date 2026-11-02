@@ -113,7 +113,7 @@ namespace SunLoader
         const string BansTitle = "[Sun Loader] Banned players";
         const string BansMarker = "<!-- sunloader-bans v1 -->";
         // The Discord invite for appeals. Set Sharing.DiscordInvite to override it.
-        const string BuiltInDiscord = "";
+        const string BuiltInDiscord = "https://discord.gg/GKbcUcyabX";
         public static string DiscordInvite => Plugin.ShareDiscord.Value.Trim() is { Length: > 0 } link ? link : BuiltInDiscord;
 
         static int bansIssue;

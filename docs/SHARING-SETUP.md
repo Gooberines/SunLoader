@@ -55,8 +55,8 @@ player gets it. (To test before rebuilding, put it in `Sharing.GitHubAppClientId
   **Unban**. Bans are saved on the locked `[Sun Loader] Banned players` issue, so the reason you give is public. A
   banned player earns no suns, leaves the leaderboard, can't share or rate, and their bosses are hidden. A ban covers
   their GitHub login; it doesn't kick them from online lobbies.
-- **Appeals:** set `BuiltInDiscord` in `mod/SunLoader/Share.cs` to your Discord invite (or `Sharing.DiscordInvite` in the
-  config to try it first). Banned players and flagged runs get an **Appeal on Discord** button.
+- **Appeals:** go to the Discord invite in `BuiltInDiscord` in `mod/SunLoader/Share.cs` (or `Sharing.DiscordInvite` in the
+  config). Banned players and flagged runs get an **Appeal on Discord** button.
 - **Review clears:** each clear comment records the run's length and Sun Loader version.
 
 Bosses are attack data only (attack names, times, positions and settings). Sun Loader
