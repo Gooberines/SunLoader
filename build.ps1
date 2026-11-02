@@ -34,6 +34,9 @@ Build 'mod\ExampleMod\ExampleMod.csproj' 'ExampleMod'
 $payload = Join-Path $root 'mod\Installer\payload'
 New-Item -ItemType Directory -Force $payload | Out-Null
 Copy-Item (Join-Path $build 'SunLoader\SunLoader.dll'), (Join-Path $build 'NoIntro\NoIntro.dll'), (Join-Path $build 'ExampleMod\ExampleMod.dll') $payload -Force
+# The version the installer compares with GitHub's newest release.
+$version = [regex]::Match((Get-Content -Raw (Join-Path $root 'mod\SunLoader\Plugin.cs')), 'const string Version = "([^"]+)"').Groups[1].Value
+Set-Content (Join-Path $payload 'version.txt') $version -NoNewline -Encoding ascii
 Build 'mod\Installer\SunLoaderInstaller.csproj' 'Installer'
 
 # The official BepInEx package the installer unpacks. Downloaded here (not stored in git) and
@@ -55,7 +58,7 @@ if (Test-Path (Split-Path $stage)) { Remove-Item (Split-Path $stage) -Recurse -F
 New-Item -ItemType Directory -Force (Join-Path $stage 'files') | Out-Null
 Copy-Item (Join-Path $build 'Installer\SunLoaderInstaller.exe'), (Join-Path $build 'Installer\SunLoaderInstaller.exe.config') $stage
 Copy-Item (Join-Path $root 'mod\Installer\SETUP-README.txt') (Join-Path $stage 'README.txt')
-Copy-Item (Join-Path $payload '*.dll') (Join-Path $stage 'files')
+Copy-Item (Join-Path $payload '*.dll'), (Join-Path $payload 'version.txt') (Join-Path $stage 'files')
 Copy-Item $bepinex (Join-Path $stage 'files\BepInEx.zip')
 Copy-Item (Join-Path $root 'mod\Installer\BepInEx-LICENSE.txt') (Join-Path $stage 'files\BepInEx-LICENSE.txt')
 
@@ -64,4 +67,7 @@ $zip = Join-Path $dist 'SunLoader-Setup.zip'
 if (Test-Path $zip) { Remove-Item $zip }
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 [IO.Compression.ZipFile]::CreateFromDirectory((Split-Path $stage), $zip)
-Write-Host "Done: $zip" -ForegroundColor Green
+# The mod DLLs on their own, to attach to the GitHub release: the installer's update check
+# downloads them from there.
+Copy-Item (Join-Path $payload '*.dll') $dist -Force
+Write-Host "Done: $zip (attach it and dist\*.dll to the release, tagged v$version)" -ForegroundColor Green

@@ -26,7 +26,7 @@ namespace SunLoaderInstaller
 
         readonly TextBox pathBox = new TextBox();
         readonly Label pathStatus = new Label();
-        readonly CheckBox noIntro = new CheckBox(), exampleMod = new CheckBox();
+        readonly CheckBox noIntro = new CheckBox(), exampleMod = new CheckBox(), getLatest = new CheckBox();
         readonly Button installBtn = new Button(), uninstallBtn = new Button(), browseBtn = new Button();
         readonly ProgressBar progress = new ProgressBar();
         readonly TextBox log = new TextBox();
@@ -63,21 +63,22 @@ namespace SunLoaderInstaller
             Controls.Add(MakeLabel("EXTRAS", 30, 230, new Font("Segoe UI", 9f, FontStyle.Bold), Dim));
             SetupCheck(noIntro, "No Intro  -  skip the intro video when the game starts", 30, 254, true);
             SetupCheck(exampleMod, "Example Mod  -  a sample mod for people making their own", 30, 282, false);
+            SetupCheck(getLatest, "Get the newest Sun Loader from GitHub (needs internet)", 30, 310, true);
 
             Style(installBtn, "INSTALL", Pink, PinkHover);
-            installBtn.SetBounds(30, 322, 400, 52);
+            installBtn.SetBounds(30, 346, 400, 52);
             installBtn.Font = new Font("Segoe UI Black", 16f);
             installBtn.Click += (s, e) => Run(install: true);
             Controls.Add(installBtn);
             Style(uninstallBtn, "UNINSTALL", Panel, Color.FromArgb(90, 25, 40));
-            uninstallBtn.SetBounds(440, 322, 170, 52);
+            uninstallBtn.SetBounds(440, 346, 170, 52);
             uninstallBtn.Click += (s, e) => Run(install: false);
             Controls.Add(uninstallBtn);
 
-            progress.SetBounds(30, 388, 580, 10);
+            progress.SetBounds(30, 410, 580, 10);
             Controls.Add(progress);
 
-            log.SetBounds(30, 410, 580, 130);
+            log.SetBounds(30, 430, 580, 110);
             log.Multiline = true; log.ReadOnly = true; log.ScrollBars = ScrollBars.Vertical;
             log.BackColor = Panel; log.ForeColor = Color.Gainsboro; log.BorderStyle = BorderStyle.None;
             log.Font = new Font("Consolas", 9f);
@@ -147,11 +148,11 @@ namespace SunLoaderInstaller
                     "Uninstall", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
             busy = true; RefreshState(); progress.Value = 0;
             var game = pathBox.Text.Trim();
-            bool wantIntro = noIntro.Checked, wantExample = exampleMod.Checked;
+            bool wantIntro = noIntro.Checked, wantExample = exampleMod.Checked, wantLatest = getLatest.Checked;
             var installer = new Installer { Log = Say, Progress = SetProgress };
             try
             {
-                await Task.Run(() => { if (install) installer.Install(game, wantIntro, wantExample); else installer.Uninstall(game); });
+                await Task.Run(() => { if (install) installer.Install(game, wantIntro, wantExample, wantLatest); else installer.Uninstall(game); });
                 if (install)
                     MessageBox.Show(this,
                         "Sun Loader is installed!\n\n" +

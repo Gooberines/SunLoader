@@ -514,7 +514,7 @@ namespace SunLoader
             var r = Modal(vw, 900, 640);
             float x = r.x + 30, y = r.y + 24, w = r.width - 60;
             Theme.Title(new Rect(x, y, w, 50), "RATE '" + b.Name.ToUpperInvariant() + "'", Pink, 30);
-            EditorGui.Text(new Rect(x, y + 50, w, 24), $"by {b.Author}   ·   {b.Attacks} attacks   ·   beaten by {b.Clears}. Players who beat it get its suns, also the ones who beat it before.", Dim, 13);
+            EditorGui.Text(new Rect(x, y + 50, w, 24), (b.IsLevel ? $"Game level by {b.Artist}" : $"by {b.Author}   ·   {b.Attacks} attacks") + $"   ·   beaten by {b.Clears}. Players who beat it get its suns, also the ones who beat it before.", Dim, 13);
             y += 86;
             const int cols = 5; const float bw = 160, bh = 98, gap = 8;
             for (int suns = 1; suns <= Share.MaxSuns; suns++)
@@ -572,12 +572,14 @@ namespace SunLoader
             }
             y += 172;
 
-            // The leaderboard.
-            Theme.Title(new Rect(x, y, w, 36), "LEADERBOARD", Pink, 24);
+            // The leaderboard, or the game's own levels and their suns.
+            if (EditorGui.Button(new Rect(x, y, 200, 36), "Leaderboard", on: !showLevels)) { showLevels = false; sunsScroll = 0; }
+            if (EditorGui.Button(new Rect(x + 208, y, 200, 36), "Game levels", "The game's own levels: beat them in the Playlist for suns", on: showLevels)) { showLevels = true; sunsScroll = 0; }
             if (EditorGui.Button(new Rect(r.xMax - 30 - 128, y, 128, 34), Share.Busy ? "Loading" : "Refresh") && !Share.Busy) Share.Refresh();
-            y += 44;
+            y += 46;
             var listRect = new Rect(x, y, w, r.yMax - y - 20);
             if (e.type == EventType.ScrollWheel && listRect.Contains(e.mousePosition)) { sunsScroll = Mathf.Max(0, sunsScroll + e.delta.y * 20); e.Use(); }
+            if (showLevels) { DrawLevels(listRect); return; }
             var board = Share.Leaderboard;
             if (board.Count == 0)
                 EditorGui.Text(new Rect(x, y + 10, w, 26), Share.Busy ? "Loading..." : "Nobody has suns yet. Beat a rated boss to be first!", Dim, 15);
@@ -598,6 +600,39 @@ namespace SunLoader
                 EditorGui.Text(new Rect(row.xMax - 160, row.y + 11, 150, 22), $"{p.Beaten} beaten", Dim, 13);
             }
             sunsScroll = Mathf.Min(sunsScroll, Mathf.Max(0, board.Count * h - listRect.height));
+        }
+
+        static bool showLevels;
+
+        // The game's own levels with their suns. Beating one in the Playlist earns them.
+        static void DrawLevels(Rect listRect)
+        {
+            var levels = Share.Levels;
+            if (levels.Count == 0)
+            {
+                EditorGui.Text(new Rect(listRect.x, listRect.y + 10, listRect.width, 26), Share.Busy ? "Loading..." : "The level list hasn't loaded. Press Refresh.", Dim, 15);
+                return;
+            }
+            var beaten = levels.Count(l => l.ClearedByMe);
+            EditorGui.Text(new Rect(listRect.x, listRect.y - 4, listRect.width, 22),
+                $"Beat these in the Playlist (normal levels, no editor or no damage) to earn their suns.   You've beaten {beaten} of {levels.Count}.", Dim, 13);
+            listRect = new Rect(listRect.x, listRect.y + 24, listRect.width, listRect.height - 24);
+            const int cols = 2; const float h = 74, gap = 8;
+            var cw = (listRect.width - gap) / cols;
+            var rows = (levels.Count + cols - 1) / cols;
+            for (int i = 0; i < levels.Count; i++)
+            {
+                var l = levels[i];
+                var cell = new Rect(listRect.x + (i % cols) * (cw + gap), listRect.y + (i / cols) * h - sunsScroll, cw, h - 8);
+                if (cell.y < listRect.y - 2 || cell.yMax > listRect.yMax + 2) continue;
+                Theme.Slanted(cell, cell.Contains(Event.current.mousePosition) ? RowHover : Row, 0.05f);
+                Badge(new Rect(cell.x + 8, cell.y + 4, 104, cell.height - 8), l.Suns, l.ClearedByMe);
+                Theme.Title(new Rect(cell.x + 124, cell.y + 2, cw - 300, 34), l.Name, Color.white, 20);
+                EditorGui.Text(new Rect(cell.x + 126, cell.y + 36, cw - 300, 22), (l.Artist ?? "") + $"   ·   beaten by {l.Clears}", Dim, 12);
+                if (Share.IsOwner && EditorGui.Button(new Rect(cell.xMax - 160, cell.y + 16, 150, 34), l.Suns == 0 ? "Rate" : "Change", "Owner only: rate it 1-20 suns", color: new Color(0.5f, 0.4f, 0.05f)))
+                    rating = l;
+            }
+            sunsScroll = Mathf.Min(sunsScroll, Mathf.Max(0, rows * h - listRect.height));
         }
 
         // ---------- upload ----------
@@ -717,7 +752,9 @@ namespace SunLoader
                 var hover = cell.Contains(e.mousePosition);
                 Theme.Slanted(cell, picked ? Pink : hover ? RowHover : Row, 0.08f);
                 EditorGui.Text(new Rect(cell.x + 14, cell.y + 5, cw - 24, 26), s.Id, Color.white, 16);
-                var sub = (s.Artist ?? "") + (s.LengthSec > 0 ? $"  ·  {(int)(s.LengthSec / 60)}:{(int)(s.LengthSec % 60):00}" : "") + (CustomBosses.HasDump(s.Id) ? "" : "  ·  not played yet");
+                var levelSuns = Share.LevelFor(s.Id)?.Suns ?? 0;
+                var sub = (s.Artist ?? "") + (s.LengthSec > 0 ? $"  ·  {(int)(s.LengthSec / 60)}:{(int)(s.LengthSec % 60):00}" : "")
+                    + (levelSuns > 0 ? $"  ·  {levelSuns} suns ({Share.DifficultyFor(levelSuns)})" : "") + (CustomBosses.HasDump(s.Id) ? "" : "  ·  not played yet");
                 EditorGui.Text(new Rect(cell.x + 14, cell.y + 31, cw - 24, 22), sub, picked ? Color.white : Dim, 12);
                 if (hover && e.type == EventType.MouseDown && e.button == 0) { newStage = s.Id; e.Use(); }
             }

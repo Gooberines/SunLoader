@@ -38,8 +38,6 @@ namespace SunLoader
         public static BossProject Active;
         // Open the editor as soon as the active boss's level starts.
         public static bool EditOnStart;
-        // Set when the editor or no-damage mode was used during this run: no suns for it.
-        public static bool RunTainted;
         // Set once the active boss's spawner has started, so the menus we pass through on the
         // way in don't count as leaving it.
         static bool started;
@@ -229,7 +227,6 @@ namespace SunLoader
 
             Active = b;
             EditOnStart = edit;
-            RunTainted = edit;
             started = false;
             levelSince = -1;
             pendingLevel = stage.Checkpoint;
@@ -313,10 +310,10 @@ namespace SunLoader
         public static void OnBeaten()
         {
             var b = Active;
-            if (b == null) return;
-            Plugin.Logger.LogInfo($"Bosses: beat '{b.Name}'" + (RunTainted ? " (with the editor or no damage)" : ""));
+            if (b == null) { OnLevelBeaten(); return; }
+            Plugin.Logger.LogInfo($"Bosses: beat '{b.Name}'" + (LevelRun.Tainted ? " (with the editor or no damage)" : ""));
             if (b.SharedIssue == null) { EditorGui.Toast($"You beat '{b.Name}'!"); return; }
-            if (RunTainted) { EditorGui.Toast($"You beat '{b.Name}', but with the editor or no damage on, so it doesn't count for suns"); return; }
+            if (LevelRun.Tainted) { EditorGui.Toast($"You beat '{b.Name}', but with the editor or no damage on, so it doesn't count for suns"); return; }
             string hash = null, saved = null;
             try
             {
@@ -333,9 +330,26 @@ namespace SunLoader
                 : $"You beat '{b.Name}'!" + (Share.SignedIn ? "" : " Sign in with GitHub to record it."));
         }
 
+        // One of the game's own levels beaten from the Playlist.
+        static void OnLevelBeaten()
+        {
+            var id = LevelRun.Id;
+            if (id == null) return;
+            Plugin.Logger.LogInfo($"Bosses: beat level '{id}'" + (LevelRun.Modified ? " (replaced attacks)" : "") + (LevelRun.Tainted ? " (editor or no damage)" : ""));
+            if (LevelRun.Modified) { EditorGui.Toast($"You beat {id} with replaced attacks, so it doesn't count for suns"); return; }
+            if (LevelRun.Tainted) { EditorGui.Toast($"You beat {id} with the editor or no damage on, so it doesn't count for suns"); return; }
+            var level = Share.LevelFor(id);
+            var again = level?.ClearedByMe == true;
+            Share.AddLevelClear(id);
+            var suns = level?.Suns ?? 0;
+            EditorGui.Toast(again ? $"You beat {id} again!" : suns > 0 ? $"You beat {id}! +{suns} suns" + (Share.SignedIn ? "" : " (sign in with GitHub to collect them)") : $"You beat {id}!");
+        }
+
         // Called every frame. Back on the main menu or the playlist screen means the boss run is over.
         public static void Update()
         {
+            // Back on a menu (and not on the way into a boss), a new run starts clean.
+            if ((MainMenuSeen.OnMainMenu || PlaylistMenuSeen.OnPlaylistMenu) && pendingLevel == IntPtr.Zero) LevelRun.Tainted = false;
             UpdateLaunch();
             if (Active == null || !started) return;
             var onMenu = MainMenuSeen.OnMainMenu || PlaylistMenuSeen.OnPlaylistMenu;
@@ -392,6 +406,16 @@ namespace SunLoader
             diff = ModelGameDifficultyEnum.NORMAL;
             Plugin.Logger.LogInfo("Bosses: the game is starting the boss's stage");
         }
+    }
+
+    // The level being played, for deciding whether beating it earns suns.
+    static class LevelRun
+    {
+        public static string Id;
+        public static bool Modified;   // its attacks were replaced (a level replacement, a boss, a lobby boss)
+        public static bool Tainted;    // the editor or no-damage mode was used since the last menu
+
+        public static void Started(string id, bool modified) { Id = id; Modified = modified; }
     }
 
     // A playlist run ends by clearing the level's last checkpoint.

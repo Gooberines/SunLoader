@@ -15,8 +15,9 @@ namespace SunLoaderInstaller
     class Installer
     {
         // The BepInEx build Sun Loader is made for: the official, unmodified zip from
-        // builds.bepinex.dev (6.0.0-be.791), shipped in files\BepInEx.zip. The installer has no
-        // network code at all. Size and SHA-256 are checked so a damaged copy is never installed.
+        // builds.bepinex.dev (6.0.0-be.791), shipped in files\BepInEx.zip and never downloaded.
+        // Size and SHA-256 are checked so a damaged copy is never installed. The only network use
+        // is the optional check for a newer Sun Loader on GitHub (Updater.cs).
         const long BepInExSize = 34336890;
         const string BepInExSha256 = "BB1C510909B69522733791F3A0817A487379A52DA6468A492F1C9C19B3EC6F9A";
 
@@ -73,9 +74,10 @@ namespace SunLoaderInstaller
 
         // ---------- install ----------
 
-        public void Install(string game, bool noIntro, bool exampleMod)
+        public void Install(string game, bool noIntro, bool exampleMod, bool getLatest)
         {
             Check(game);
+            newer = getLatest ? Updater.Fetch(Log) : new Dictionary<string, string>();
             InstallBepInEx(game);
 
             Log("Installing Sun Loader...");
@@ -173,9 +175,12 @@ namespace SunLoaderInstaller
         // inside the exe: an exe that unpacks hidden DLLs looks like malware to antivirus scanners.
         public static string FilesDir => Path.Combine(Path.GetDirectoryName(typeof(Installer).Assembly.Location), "files");
 
-        static void WriteResource(string name, string target)
+        // Newer DLLs from GitHub, used instead of the ones in files\ (see Updater).
+        Dictionary<string, string> newer = new Dictionary<string, string>();
+
+        void WriteResource(string name, string target)
         {
-            var source = Path.Combine(FilesDir, name);
+            var source = newer.TryGetValue(name, out var downloaded) ? downloaded : Path.Combine(FilesDir, name);
             if (!File.Exists(source))
                 throw new InstallError($"Can't find files\\{name} next to the installer. Unzip the whole download (not just the exe) and run it from there.");
             Directory.CreateDirectory(Path.GetDirectoryName(target));

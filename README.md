@@ -13,7 +13,8 @@ A mod loader and in-game boss editor for **Just Shapes & Beats** (Steam, Windows
   them, rate them 👍 / 👎, and share your own (sign in with GitHub to post and rate; browsing needs no account).
 - **Suns and difficulty ratings, like Geometry Dash's stars:** the owner of the bosses repository rates shared bosses
   1 to 20 suns, and the sun count sets the difficulty, from Easy to Extreme Demon. Beating a rated boss earns its suns,
-  and the **Suns** tab has your sun counter and a leaderboard.
+  and the **Suns** tab has your sun counter and a leaderboard. The game's own levels are rated too (**Suns → Game
+  levels**): beat them from the Playlist to earn their suns.
 - **Custom bosses in online multiplayer:** the lobby host picks one of their bosses, and everyone in the lobby with Sun
   Loader plays it when its stage comes up. The boss is sent through the Steam lobby; nobody has to download it.
 - **Boss editor:** press **F1** in any level to place attacks on the game screen, set their timing and settings,
@@ -32,7 +33,8 @@ A mod loader and in-game boss editor for **Just Shapes & Beats** (Steam, Windows
 2. Close the game, run `SunLoaderInstaller.exe` and press **Install**.
 3. Start the game. The first start takes a minute or two longer while BepInEx sets itself up.
 
-The installer works offline:
+The installer works offline, except for one optional box, **Get the newest Sun Loader from GitHub**. When it's
+ticked, the installer checks this repository's Releases and uses a newer release's mod DLLs if there is one. Otherwise:
 - It unpacks the official, unmodified BepInEx 6.0.0-be.791 package (checked by SHA-256) and copies the mod DLLs into
   the game folder.
 - **Uninstall** in the same window switches everything off and keeps your bosses and mods.
@@ -62,6 +64,9 @@ To install by hand instead:
   Demon. A clear is a comment posted from the
   player's login when they beat a downloaded, unchanged boss without the editor or no-damage mode. Clears wait in
   `BepInEx\SunLoader\clears.json` until you're signed in, and count for suns once the boss is rated.
+- **Game levels** each have a `[Level] NAME` issue in the bosses repository, made by the owner, with a `suns: N`
+  label. Beating one from the Playlist posts a clear there, unless its attacks were replaced or the editor or
+  no-damage mode was used.
 - **Multiplayer:** in an online lobby, the host's boss list shows **Use in lobby**. Players need Sun Loader to see the
   custom boss (others get the normal level), and a custom song only plays for players who have the same song file.
 - **Level replacements** (F1 in a normal level) are saved to `BepInEx\SunLoader\<level name>.json`. That level plays
@@ -93,7 +98,9 @@ You need:
 .\build.ps1 -Deploy                                  # also copy the mods into your game
 ```
 
-This produces `build\` (each project) and `dist\SunLoader-Setup.zip` (the release package). To build one project:
+This produces `build\` (each project), `dist\SunLoader-Setup.zip` (the release package) and `dist\*.dll`. Attach all
+of them to a GitHub release tagged `v<version>`: the installer's update check downloads the DLLs from there. To build
+one project:
 ```powershell
 dotnet build mod\SunLoader\SunLoader.csproj -c Release -p:GameDir="D:\Games\Just Shapes & Beats"
 ```

@@ -1,6 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <!-- .NET Framework 4.8 ships with Windows 10 and 11, so the exe runs without installing anything
-       and stays small. BepInEx itself is downloaded at install time from its official server. -->
+       and stays small. BepInEx ships next to the exe (files\BepInEx.zip); the optional update
+       check downloads only Sun Loader's own DLLs from its GitHub Releases. -->
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net48</TargetFramework>
@@ -16,8 +17,8 @@
     <Description>Installs BepInEx and the Sun Loader mod loader into Just Shapes &amp; Beats.</Description>
     <Company>Sun Loader</Company>
     <Copyright>Sun Loader</Copyright>
-    <Version>0.1.0-alpha</Version>
-    <FileVersion>0.1.0.0</FileVersion>
+    <Version>0.2.0-alpha</Version>
+    <FileVersion>0.2.0.0</FileVersion>
     <Deterministic>true</Deterministic>
     <DebugType>none</DebugType>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
@@ -25,9 +26,10 @@
   <ItemGroup>
     <Reference Include="System.IO.Compression" />
     <Reference Include="System.IO.Compression.FileSystem" />
+    <Reference Include="System.Web.Extensions" />
   </ItemGroup>
   <!-- The mod DLLs are shipped next to the exe in files\, not embedded (see Installer.FilesDir). -->
   <ItemGroup>
-    <None Include="payload\*.dll" Link="files\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="payload\*.dll;payload\version.txt" Link="files\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

@@ -15,7 +15,7 @@ namespace SunLoader
     [BepInPlugin("riptid.jsb.sunloader", "Sun Loader", Version)]
     public class Plugin : BasePlugin
     {
-        public const string Version = "0.1.0-alpha";
+        public const string Version = "0.2.0-alpha";
         internal static ManualLogSource Logger;
         // BepInEx\SunLoader\<level>.json replaces that level; dumps\ holds the originals.
         internal static string Root;
@@ -160,17 +160,20 @@ namespace SunLoader
                 var customPath = bossPath ?? Path.Combine(Plugin.Root, id + ".json");
                 stage = "add checkpoints";
                 CustomBosses.EnsureCheckpoints(customPath, id);
+                var replaced = false;
                 if (File.Exists(customPath))
                 {
                     stage = "load custom boss";
                     var count = BossFile.Import(song, JsonNode.Parse(File.ReadAllText(customPath)));
                     if (count >= 0)
                     {
+                        replaced = true;
                         __instance.indexOfNext = 0;
                         Plugin.Logger.LogInfo($"Loaded custom boss for '{id}' ({count} attacks) from {customPath}");
                     }
                 }
 
+                LevelRun.Started(id, replaced);
                 stage = "attach editor";
                 EditorSession.Attach(__instance, song, id, bossPath);
             }

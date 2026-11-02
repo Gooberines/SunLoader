@@ -17,7 +17,10 @@ IN THE GAME
 - F1 during a level: the boss editor.
 
 WHAT THE INSTALLER DOES
-It works offline: it doesn't download anything or connect to the internet.
+It works offline. The only time it goes online is the optional "Get the newest
+Sun Loader from GitHub" box: then it asks github.com/Gooberines/SunLoader for a
+newer release and uses its mod DLLs instead (if there's no internet, it just
+installs the version in this download).
 - Finds the game in your Steam libraries (or lets you pick the folder).
 - Unpacks files\BepInEx.zip into the game folder after checking its SHA-256.
   This is the official, unmodified BepInEx 6.0.0-be.791 package from

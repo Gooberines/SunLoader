@@ -18,6 +18,8 @@ namespace SunLoader
         public int Number;              // the GitHub issue that holds it
         public string Name, Author, Stage, Music, Description, Url, Data;
         public int Attacks, Likes, Dislikes, Comments;
+        public bool IsLevel;            // one of the game's own levels, not a shared boss
+        public string Artist;           // levels only
         public int Suns;                // 1-20, set by the repository owner (a label); 0 = unrated
         public string Difficulty => Share.DifficultyFor(Suns);
         public List<string> Labels = new();
@@ -40,6 +42,8 @@ namespace SunLoader
     static class Share
     {
         const string TitlePrefix = "[Boss] ";
+        const string LevelPrefix = "[Level] ";
+        const string LevelMarker = "<!-- sunloader-level v1 -->";
         const string Marker = "<!-- sunloader-boss v1 -->";
         const int MaxBody = 60000;      // GitHub allows 65536 characters
 
@@ -50,6 +54,10 @@ namespace SunLoader
         public static bool Configured => Repo.Contains('/') && ClientId.Length > 0;
 
         public static volatile List<SharedBoss> Bosses = new();
+        // The game's own levels: one issue each ("[Level] NAME"), rated in suns like bosses.
+        public static volatile List<SharedBoss> Levels = new();
+        static List<SharedBoss> All => Bosses.Concat(Levels).ToList();
+        public static SharedBoss LevelFor(string stage) => Levels.FirstOrDefault(l => l.Stage == stage);
         public static volatile bool Busy;
         public static volatile string Status, Error;
         public static DateTime LastRefresh;
@@ -120,7 +128,7 @@ namespace SunLoader
                 {
                     var me = await Api(HttpMethod.Get, "https://api.github.com/user");
                     Login = (string)me["login"];
-                    RebuildLeaderboard(Bosses, clearsByBoss);
+                    RebuildLeaderboard(All, clearsByBoss);
                 });
             }
             catch (Exception e) { Plugin.Logger.LogWarning("Sharing: couldn't read the saved login: " + e.Message); token = null; }
@@ -166,7 +174,8 @@ namespace SunLoader
                     if (items.Count < 100) break;
                 }
                 await LoadClears(list);
-                Bosses = list;
+                Bosses = list.Where(b => !b.IsLevel).ToList();
+                Levels = list.Where(b => b.IsLevel).OrderBy(b => b.Stage).ToList();
                 LastRefresh = DateTime.Now;
             });
         }
@@ -175,13 +184,30 @@ namespace SunLoader
         {
             var title = (string)issue["title"] ?? "";
             var body = (string)issue["body"] ?? "";
-            if (!title.StartsWith(TitlePrefix) || !body.Contains(Marker)) return null;
             var labels = issue["labels"]?.AsArray().Select(l => (string)l?["name"]).Where(n => n != null).ToList() ?? new List<string>();
             var suns = labels.Where(n => n.StartsWith(LabelPrefix)).Select(n => int.TryParse(n[LabelPrefix.Length..], out var v) ? v : 0)
                 .FirstOrDefault(v => v >= 1 && v <= MaxSuns);
+            string Field(string label) => Between(body, $"**{label}:** ", "\n")?.Trim();
+            // A game level's page: only trusted from the repository owner.
+            if (title.StartsWith(LevelPrefix) && body.Contains(LevelMarker))
+            {
+                if (!string.Equals((string)issue["user"]?["login"], Repo.Split('/')[0], StringComparison.OrdinalIgnoreCase)) return null;
+                return new SharedBoss
+                {
+                    IsLevel = true,
+                    Number = (int)issue["number"],
+                    Suns = suns,
+                    Labels = labels,
+                    Name = title[LevelPrefix.Length..].Trim(),
+                    Stage = Field("Stage") ?? title[LevelPrefix.Length..].Trim(),
+                    Artist = Field("Artist"),
+                    Url = (string)issue["html_url"],
+                    Comments = (int?)issue["comments"] ?? 0,
+                };
+            }
+            if (!title.StartsWith(TitlePrefix) || !body.Contains(Marker)) return null;
             var data = Between(body, "```sunloader\n", "\n```")?.Trim();
             if (data == null) return null;
-            string Field(string label) => Between(body, $"**{label}:** ", "\n")?.Trim();
             int.TryParse(Field("Attacks"), out var attacks);
             return new SharedBoss
             {
@@ -329,7 +355,7 @@ namespace SunLoader
                 await Api(HttpMethod.Put, $"https://api.github.com/repos/{Repo}/issues/{b.Number}/labels", new JsonObject { ["labels"] = arr });
                 b.Labels = labels;
                 b.Suns = suns;
-                RebuildLeaderboard(Bosses, clearsByBoss);
+                RebuildLeaderboard(All, clearsByBoss);
                 done?.Invoke(suns == 0 ? $"'{b.Name}' is unrated now" : $"Rated '{b.Name}' {suns} suns ({DifficultyFor(suns)})");
             });
         }
@@ -358,7 +384,7 @@ namespace SunLoader
             RebuildLeaderboard(bosses, byBoss);
         }
 
-        static void RebuildLeaderboard(List<SharedBoss> bosses, Dictionary<int, HashSet<string>> byBoss)
+        static void RebuildLeaderboard(IEnumerable<SharedBoss> bosses, Dictionary<int, HashSet<string>> byBoss)
         {
             var players = new Dictionary<string, Player>(StringComparer.OrdinalIgnoreCase);
             foreach (var b in bosses)
@@ -391,6 +417,28 @@ namespace SunLoader
             nextFlush = 0;
         }
 
+        // A game level beaten: recorded on its page, or kept by name until the level list is loaded.
+        public static void AddLevelClear(string stage)
+        {
+            if (LevelFor(stage) is { } level) { AddClear(level.Number); return; }
+            var waiting = WaitingLevels();
+            if (!waiting.Contains(stage)) { waiting.Add(stage); WriteWaitingLevels(waiting); }
+        }
+
+        static string WaitingFile => Path.Combine(Plugin.Root, "clears-levels.json");
+
+        static List<string> WaitingLevels()
+        {
+            try { return File.Exists(WaitingFile) ? JsonNode.Parse(File.ReadAllText(WaitingFile)).AsArray().Select(n => (string)n).ToList() : new(); }
+            catch { return new(); }
+        }
+
+        static void WriteWaitingLevels(List<string> stages)
+        {
+            Directory.CreateDirectory(Plugin.Root);
+            File.WriteAllText(WaitingFile, new JsonArray(stages.Select(n => (JsonNode)n).ToArray()).ToJsonString());
+        }
+
         static (List<int> pending, List<int> posted) ReadClears()
         {
             try
@@ -417,11 +465,20 @@ namespace SunLoader
         }
 
         static float nextFlush;
+        static bool loadedOnce;
 
-        // Called every frame: posts waiting clears when signed in and not busy.
+        // Called every frame: loads the online lists once (so game-level clears know their page),
+        // then posts waiting clears when signed in and not busy.
         public static void Update()
         {
-            if (Busy || !SignedIn || !Configured || UnityEngine.Time.realtimeSinceStartup < nextFlush) return;
+            if (Busy || !Configured) return;
+            if (!loadedOnce && UnityEngine.Time.realtimeSinceStartup > 8) { loadedOnce = true; Refresh(); return; }
+            if (Levels.Count > 0 && WaitingLevels() is { Count: > 0 } waiting)
+            {
+                WriteWaitingLevels(new());
+                foreach (var stage in waiting) if (LevelFor(stage) is { } level) AddClear(level.Number);
+            }
+            if (!SignedIn || UnityEngine.Time.realtimeSinceStartup < nextFlush) return;
             nextFlush = UnityEngine.Time.realtimeSinceStartup + 30;
             var (pending, _) = ReadClears();
             if (pending.Count == 0) return;
@@ -440,7 +497,7 @@ namespace SunLoader
                     who.Add(Login);
                     Plugin.Logger.LogInfo($"Sharing: posted your clear of #{issue}");
                 }
-                RebuildLeaderboard(Bosses, clearsByBoss);
+                RebuildLeaderboard(All, clearsByBoss);
             });
         }
 
@@ -484,7 +541,7 @@ namespace SunLoader
                     token = (string)res["access_token"];
                     var me = await Api(HttpMethod.Get, "https://api.github.com/user");
                     Login = (string)me["login"];
-                    RebuildLeaderboard(Bosses, clearsByBoss);
+                    RebuildLeaderboard(All, clearsByBoss);
                     Directory.CreateDirectory(Plugin.Root);
                     File.WriteAllBytes(TokenFile, Dpapi.Protect(Encoding.UTF8.GetBytes(token)));
                     Status = null; Error = null;

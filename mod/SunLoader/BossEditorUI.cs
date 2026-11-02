@@ -101,7 +101,7 @@ namespace SunLoader
                 CustomBosses.Update();
                 LobbySync.Update();
                 Share.Update();
-                if ((open || NoDamage.On) && CustomBosses.Active != null) CustomBosses.RunTainted = true;
+                if (open || NoDamage.On) LevelRun.Tainted = true;
                 NoDamage.On = (noDamageToggle || preview != null) && EditorSession.InLevel;
                 if (Input.GetKeyDown(Plugin.EditorKey.Value)) Toggle();
                 // A boss started with Edit from the Bosses menu opens the editor once its level is up.
