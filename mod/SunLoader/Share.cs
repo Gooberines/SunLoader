@@ -40,7 +40,7 @@ namespace SunLoader
 
         public static string Repo => Plugin.ShareRepo.Value.Trim();
         // The Sun Loader GitHub App's client ID. It's public (not a secret): it only names the app.
-        const string BuiltInClientId = "";
+        const string BuiltInClientId = "Iv23liEY6kUEKaYx0euE";
         public static string ClientId => Plugin.ShareClientId.Value.Trim() is { Length: > 0 } id ? id : BuiltInClientId;
         public static bool Configured => Repo.Contains('/') && ClientId.Length > 0;
 
