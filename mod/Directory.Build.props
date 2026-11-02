@@ -4,5 +4,7 @@
   <PropertyGroup>
     <BaseIntermediateOutputPath>$(TEMP)\jsbmod\$(MSBuildProjectName)\obj\</BaseIntermediateOutputPath>
     <BaseOutputPath>$(TEMP)\jsbmod\$(MSBuildProjectName)\bin\</BaseOutputPath>
+    <!-- No debug info: it would write this machine's folder paths into the published DLLs. -->
+    <DebugType>none</DebugType>
   </PropertyGroup>
 </Project>
