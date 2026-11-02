@@ -31,6 +31,7 @@ namespace SunLoader
         static string AutoLoadFile => Path.Combine(ModsDir, "autoload.json");
         static readonly Dictionary<string, string> loadErrors = new(StringComparer.OrdinalIgnoreCase);
         static readonly HashSet<string> loaded = new(StringComparer.OrdinalIgnoreCase);
+        public static readonly HashSet<string> LoadedGuids = new(StringComparer.OrdinalIgnoreCase);   // for the anti-cheat
         static HashSet<string> autoLoad;
         public static bool RestartNeeded;
         static bool startupDone;
@@ -134,6 +135,7 @@ namespace SunLoader
                 {
                     var plugin = (BasePlugin)Activator.CreateInstance(type);
                     plugin.Load();
+                    LoadedGuids.Add(type.GetCustomAttribute<BepInPlugin>().GUID);
                     Plugin.Logger.LogInfo($"Mod menu loaded {type.GetCustomAttribute<BepInPlugin>().Name} from {m.FileName}");
                 }
                 loaded.Add(m.Path);

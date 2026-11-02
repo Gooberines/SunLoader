@@ -101,7 +101,8 @@ namespace SunLoader
             Theme.Title(new Rect(x, r.y + 24, w, 70), "WARNING", Theme.Pink, 54);
             Theme.Title(new Rect(x, r.y + 138, w, 44), "ONLINE MULTIPLAYER", Color.white, 28);
             EditorGui.Text(new Rect(x, r.y + 196, w, 120), "Using No Damage or the Boss Editor in online multiplayer will get you banned.", Color.white, 26, wrap: true);
-            EditorGui.Text(new Rect(x, r.y + 324, w, 30), "Turn them off before you play online.", new Color(0.75f, 0.75f, 0.82f), 18);
+            EditorGui.Text(new Rect(x, r.y + 306, w, 30), "Both are switched off while you're in an online lobby.", new Color(0.75f, 0.75f, 0.82f), 18);
+            EditorGui.Text(new Rect(x, r.y + 338, w, 30), "Banned by mistake? You can appeal on the Sun Loader Discord server.", new Color(0.75f, 0.75f, 0.82f), 18);
 
             var y = r.yMax - 110;
             var ready = CanAccept;
@@ -109,6 +110,7 @@ namespace SunLoader
             if (next != null && EditorGui.Button(new Rect(r.xMax - 50 - 260, y, 260, 64), "Back") && ready) Close(false);
         }
     }
+
 
     // Each way into online play from the Challenge screen. These native methods can be folded
     // with other objects' identical ones, so only the real screen is held back.

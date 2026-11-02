@@ -25,7 +25,7 @@ namespace SunLoader
         internal static BepInEx.Configuration.ConfigEntry<UnityEngine.KeyCode> EditorKey;
         internal static BepInEx.Configuration.ConfigEntry<UnityEngine.KeyCode> ModMenuKey;
         internal static BepInEx.Configuration.ConfigEntry<UnityEngine.KeyCode> BossMenuKey;
-        internal static BepInEx.Configuration.ConfigEntry<string> ShareRepo, ShareClientId;
+        internal static BepInEx.Configuration.ConfigEntry<string> ShareRepo, ShareClientId, ShareDiscord;
         internal static BepInEx.Configuration.ConfigEntry<bool> LobbyBosses;
         internal static BepInEx.Configuration.ConfigEntry<string> UiFont;
 
@@ -45,6 +45,8 @@ namespace SunLoader
                 "The public GitHub repository (owner/name) that holds shared bosses. Each shared boss is an issue there.");
             ShareClientId = Config.Bind("Sharing", "GitHubAppClientId", "",
                 "Client ID of the GitHub App used to sign in for uploading and rating. Empty = the one built into Sun Loader.");
+            ShareDiscord = Config.Bind("Sharing", "DiscordInvite", "",
+                "Discord invite link where banned players can appeal. Empty = the one built into Sun Loader.");
             LobbyBosses = Config.Bind("Multiplayer", "PlayLobbyBosses", true,
                 "In an online lobby, play the custom boss the host picked (it's sent to you through the lobby).");
             UiFont = Config.Bind("UI", "Font", "", "Name (or part of it) of the game font the menus use. Empty = pick automatically. LogOutput.log lists the choices.");
@@ -174,8 +176,10 @@ namespace SunLoader
                 }
 
                 LevelRun.Started(id, replaced);
+                AntiCheat.RunStarted(BossFile.LastCheckpointMs(replaced ? customPath : dumpPath));
                 stage = "attach editor";
                 EditorSession.Attach(__instance, song, id, bossPath);
+                if (EditorSession.Dirty) LevelRun.Modified = true;   // unsaved editor changes were put back in
             }
             catch (Exception e)
             {
@@ -390,6 +394,21 @@ namespace SunLoader
             if (modelIds.TryGetValue(model, out var id)) return id;
             try { id = new ModelSpawn(model).id; } catch { id = null; }
             return modelIds[model] = id;
+        }
+
+        // When a level file's last checkpoint is, in ms: the earliest a fair run can end.
+        public static float LastCheckpointMs(string path)
+        {
+            try
+            {
+                if (!File.Exists(path)) return 0;
+                return JsonNode.Parse(File.ReadAllText(path))["layers"].AsArray()
+                    .SelectMany(l => l["spawns"]?.AsArray().AsEnumerable() ?? Enumerable.Empty<JsonNode>())
+                    .Where(s => (string)s?["type"] == "CheckPoint")
+                    .Select(s => (float?)s["time"] ?? 0)
+                    .DefaultIfEmpty(0).Max();
+            }
+            catch (Exception e) { Plugin.Logger.LogWarning("Couldn't read the level's length: " + e.Message); return 0; }
         }
 
         // Replaces every attack in the song with the ones in the file.

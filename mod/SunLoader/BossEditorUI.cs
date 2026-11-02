@@ -105,7 +105,10 @@ namespace SunLoader
                 MultiplayerWarning.Update();
                 Share.Update();
                 if (open || NoDamage.On) LevelRun.Tainted = true;
-                NoDamage.On = (noDamageToggle || preview != null) && EditorSession.InLevel;
+                // Neither works in an online lobby: the warning before multiplayer says why.
+                NoDamage.On = (noDamageToggle || preview != null) && EditorSession.InLevel && !LobbySync.InLobby;
+                if (open && LobbySync.InLobby) { Close(true); Say("The boss editor is off in online multiplayer"); }
+                AntiCheat.Tick(open);
                 if (Input.GetKeyDown(Plugin.EditorKey.Value)) Toggle();
                 // A boss started with Edit from the Bosses menu opens the editor once its level is up.
                 if (!open && CustomBosses.EditOnStart && EditorSession.InLevel && EditorSession.IsCustomBoss) { CustomBosses.EditOnStart = false; Toggle(); }
@@ -138,6 +141,7 @@ namespace SunLoader
         static void Toggle()
         {
             if (open) { Close(true); return; }
+            if (LobbySync.InLobby) { Say("The boss editor is off in online multiplayer"); return; }
             // The last level's spawner can outlive the level, so the menus count as "not in a level" too.
             if (!EditorSession.InLevel || MainMenuSeen.OnMainMenu || PlaylistMenuSeen.OnPlaylistMenu)
             { Say("Start a level first, then press " + Plugin.EditorKey.Value); return; }

@@ -307,10 +307,10 @@ namespace SunLoader
         }
 
         // The game says the last checkpoint was cleared: the boss is beaten.
-        public static void OnBeaten()
+        public static void OnBeaten(LogicArcadeEndLevel end)
         {
             var b = Active;
-            if (b == null) { OnLevelBeaten(); return; }
+            if (b == null) { OnLevelBeaten(end); return; }
             Plugin.Logger.LogInfo($"Bosses: beat '{b.Name}'" + (LevelRun.Tainted ? " (with the editor or no damage)" : ""));
             if (b.SharedIssue == null) { EditorGui.Toast($"You beat '{b.Name}'!"); return; }
             if (LevelRun.Tainted) { EditorGui.Toast($"You beat '{b.Name}', but with the editor or no damage on, so it doesn't count for suns"); return; }
@@ -323,24 +323,26 @@ namespace SunLoader
             }
             catch (Exception e) { Plugin.Logger.LogWarning("Bosses: couldn't check the boss file: " + e.Message); }
             if (hash == null || hash != saved) { EditorGui.Toast($"You beat '{b.Name}', but your copy was changed, so it doesn't count for suns"); return; }
-            Share.AddClear(b.SharedIssue.Value);
+            if (AntiCheat.Reject(end, $"'{b.Name}'")) return;
+            Share.AddClear(b.SharedIssue.Value, AntiCheat.Evidence(hash));
             var online = Share.Bosses.FirstOrDefault(x => x.Number == b.SharedIssue);
-            var suns = online?.Suns ?? 0;
+            var suns = online?.EarnableSuns ?? 0;
             EditorGui.Toast(suns > 0 ? $"You beat '{b.Name}'! +{suns} suns" + (Share.SignedIn ? "" : " (sign in with GitHub to collect them)")
                 : $"You beat '{b.Name}'!" + (Share.SignedIn ? "" : " Sign in with GitHub to record it."));
         }
 
         // One of the game's own levels beaten from the Playlist.
-        static void OnLevelBeaten()
+        static void OnLevelBeaten(LogicArcadeEndLevel end)
         {
             var id = LevelRun.Id;
             if (id == null) return;
             Plugin.Logger.LogInfo($"Bosses: beat level '{id}'" + (LevelRun.Modified ? " (replaced attacks)" : "") + (LevelRun.Tainted ? " (editor or no damage)" : ""));
             if (LevelRun.Modified) { EditorGui.Toast($"You beat {id} with replaced attacks, so it doesn't count for suns"); return; }
             if (LevelRun.Tainted) { EditorGui.Toast($"You beat {id} with the editor or no damage on, so it doesn't count for suns"); return; }
+            if (AntiCheat.Reject(end, id)) return;
             var level = Share.LevelFor(id);
             var again = level?.ClearedByMe == true;
-            Share.AddLevelClear(id);
+            Share.AddLevelClear(id, AntiCheat.Evidence());
             var suns = level?.Suns ?? 0;
             EditorGui.Toast(again ? $"You beat {id} again!" : suns > 0 ? $"You beat {id}! +{suns} suns" + (Share.SignedIn ? "" : " (sign in with GitHub to collect them)") : $"You beat {id}!");
         }
@@ -425,7 +427,7 @@ namespace SunLoader
         static void Postfix(LogicArcadeEndLevel __instance)
         {
             if (!SafeRead.IsObjectOf<LogicArcadeEndLevel>(__instance.Pointer)) return;
-            try { CustomBosses.OnBeaten(); }
+            try { CustomBosses.OnBeaten(__instance); }
             catch (Exception e) { Plugin.Logger.LogError("Bosses: " + e); }
         }
     }

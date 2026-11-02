@@ -89,11 +89,12 @@ namespace SunLoader
             if (e.type == EventType.KeyDown && Keys(e)) return;
 
             // With a popup up, the menu behind it is only painted, so clicks can't reach it.
-            var modal = Share.UserCode != null || uploading != null || rating != null;
+            var modal = Share.UserCode != null || uploading != null || rating != null || banning != null;
             if (!modal || e.type == EventType.Repaint) DrawMenu(vw);
             if (Share.UserCode != null) DrawLogin(vw);
             else if (uploading != null) DrawUpload(vw);
             else if (rating != null) DrawRate(vw);
+            else if (banning != null) DrawBan(vw);
         }
 
         static void DrawMenu(float vw)
@@ -129,6 +130,10 @@ namespace SunLoader
             else if (Share.Status != null) EditorGui.Text(new Rect(x, y, w, 26), Share.Status, Cyan);
             y += 30;
 
+            if (screen != Screen.New && Share.IAmBanned)
+                y = AppealBar(x, y, w, "You're banned from suns, sharing and rating" + (string.IsNullOrEmpty(Share.MyBanReason) ? "." : ": " + Share.MyBanReason));
+            else if (screen == Screen.Suns && AntiCheat.LastFlag != null)
+                y = AppealBar(x, y, w, AntiCheat.LastFlag);
             if (screen != Screen.New && LobbySync.InLobby) y = LobbyBar(x, y, w);
 
             if (screen == Screen.New) DrawNew(r, x, y, w);
@@ -151,6 +156,68 @@ namespace SunLoader
             Theme.Title(new Rect(b.x + 26, b.y + 6, 210, 44), "BOSSES", hover ? Theme.Pink : new Color(0.02f, 0.02f, 0.03f), 32);
             EditorGui.Text(new Rect(b.x + 28, b.y + 44, 210, 22), $"MAKE YOUR OWN · {Plugin.BossMenuKey.Value}", hover ? Theme.PinkDark : new Color(0, 0, 0, 0.75f), 12);
             if (e.type == EventType.MouseDown && e.button == 0 && hover) { e.Use(); Toggle(); }
+        }
+
+        // ---------- bans and appeals ----------
+
+        static string banning, banReason = "";
+        static bool showBanned;
+
+        static float AppealBar(float x, float y, float w, string text)
+        {
+            var bar = new Rect(x, y, w, 50);
+            Theme.Slanted(bar, new Color(0.3f, 0.05f, 0.1f), 0.05f);
+            EditorGui.Fill(new Rect(bar.x, bar.y, 6, bar.height), Orange);
+            EditorGui.Text(new Rect(x + 20, y + 13, w - 290, 26), text, Color.white, 14);
+            if (Share.DiscordInvite.Length > 0)
+            {
+                if (EditorGui.Button(new Rect(bar.xMax - 250, y + 8, 240, 34), "Appeal on Discord", "Think this is a mistake? Ask on the Sun Loader Discord server.", color: BlueBtn)) OpenUrl(Share.DiscordInvite);
+            }
+            else EditorGui.Text(new Rect(bar.xMax - 270, y + 15, 260, 22), "Appeal on the Sun Loader Discord", Dim, 13);
+            return y + 62;
+        }
+
+        static void DrawBan(float vw)
+        {
+            var r = Modal(vw, 760, 400);
+            float x = r.x + 30, y = r.y + 24, w = r.width - 60;
+            Theme.Title(new Rect(x, y, w, 50), "BAN " + banning.ToUpperInvariant(), Pink, 30);
+            y += 66;
+            EditorGui.Text(new Rect(x, y, w, 50), "They lose their suns and leave the leaderboard, their bosses are hidden, and they can't share or rate. They'll be told they can appeal on Discord.", Color.white, 14, wrap: true);
+            y += 66;
+            EditorGui.Text(new Rect(x, y, w, 24), "Reason (shown publicly on GitHub and to the player):", Color.white, 15);
+            banReason = Field(new Rect(x, y + 30, w, 40), "banreason", banReason);
+            var reason = (focus == "banreason" ? focusText : banReason).Trim();
+            if (EditorGui.Button(new Rect(x, r.yMax - 70, 260, 44), "Ban them", color: reason.Length > 0 ? RedBtn : RowHover))
+            {
+                if (reason.Length == 0) { Say("Give a reason, so they know what to appeal", true); return; }
+                var who = banning;
+                banning = null; focus = null;
+                Share.SetBan(who, reason, m => Say(m));
+                return;
+            }
+            if (EditorGui.Button(new Rect(r.xMax - 210, r.yMax - 70, 180, 44), "Cancel")) { banning = null; focus = null; }
+        }
+
+        static void DrawBanned(Rect listRect)
+        {
+            var bans = Share.Bans.OrderBy(kv => kv.Key).ToList();
+            if (bans.Count == 0) EditorGui.Text(new Rect(listRect.x, listRect.y + 10, listRect.width, 26), "Nobody is banned.", Dim, 15);
+            const float h = 46;
+            float ly = listRect.y - sunsScroll;
+            foreach (var (name, reason) in bans)
+            {
+                if (ly >= listRect.y - 2 && ly + h <= listRect.yMax + 2)
+                {
+                    var row = new Rect(listRect.x, ly, listRect.width, h - 6);
+                    Theme.Slanted(row, Row, 0.04f);
+                    EditorGui.Text(new Rect(row.x + 16, row.y + 9, 280, 24), name, Color.white, 17);
+                    EditorGui.Text(new Rect(row.x + 300, row.y + 11, row.width - 480, 22), reason, Dim, 13);
+                    if (EditorGui.Button(new Rect(row.xMax - 150, row.y + 4, 140, 32), "Unban", color: GreenBtn)) Share.SetBan(name, null, m => Say(m));
+                }
+                ly += h;
+            }
+            sunsScroll = Mathf.Min(sunsScroll, Mathf.Max(0, bans.Count * h - listRect.height));
         }
 
         // ---------- online lobby ----------
@@ -378,12 +445,12 @@ namespace SunLoader
             var hover = row.Contains(Event.current.mousePosition);
             Theme.Slanted(row, hover ? RowHover : Row, 0.06f);
             EditorGui.Fill(new Rect(row.x, row.y, 6, row.height), b.Score > 0 ? Green : b.Score < 0 ? Orange : Pink);
-            Badge(new Rect(row.x + 16, row.y + 6, 116, row.height - 12), b.Suns, b.ClearedByMe);
+            Badge(new Rect(row.x + 16, row.y + 6, 116, row.height - 12), b.EarnableSuns, b.ClearedByMe);
             float tx = row.x + 146, tw = row.width - 640 - 124;
             Theme.Title(new Rect(tx, row.y + 2, tw, 40), b.Name, Color.white, 24);
             var stage = CustomBosses.Stage(b.Stage);
             EditorGui.Text(new Rect(tx, row.y + 42, tw, 22),
-                $"by {b.Author}   ·   on {b.Stage}" + (stage == null && CustomBosses.Stages().Count > 0 ? " (not in your game!)" : "") + $"   ·   {b.Attacks} attacks   ·   beaten by {b.Clears}   ·   {Ago(b.Created.ToLocalTime())}", Dim, 13);
+                $"by {b.Author}   ·   on {b.Stage}" + (stage == null && CustomBosses.Stages().Count > 0 ? " (not in your game!)" : "") + $"   ·   {b.Attacks} attacks   ·   beaten by {b.Clears}   ·   {Ago(b.Created.ToLocalTime())}" + (b.RatingStale ? "   ·   changed since it was rated" : ""), Dim, 13);
             if (b.Description != null) EditorGui.Text(new Rect(tx, row.y + 64, tw, 22), b.Description, new Color(0.85f, 0.85f, 0.9f), 13);
 
             // Rating.
@@ -573,13 +640,15 @@ namespace SunLoader
             y += 172;
 
             // The leaderboard, or the game's own levels and their suns.
-            if (EditorGui.Button(new Rect(x, y, 200, 36), "Leaderboard", on: !showLevels)) { showLevels = false; sunsScroll = 0; }
-            if (EditorGui.Button(new Rect(x + 208, y, 200, 36), "Game levels", "The game's own levels: beat them in the Playlist for suns", on: showLevels)) { showLevels = true; sunsScroll = 0; }
+            if (EditorGui.Button(new Rect(x, y, 200, 36), "Leaderboard", on: !showLevels && !showBanned)) { showLevels = showBanned = false; sunsScroll = 0; }
+            if (EditorGui.Button(new Rect(x + 208, y, 200, 36), "Game levels", "The game's own levels: beat them in the Playlist for suns", on: showLevels)) { showLevels = true; showBanned = false; sunsScroll = 0; }
+            if (Share.IsOwner && EditorGui.Button(new Rect(x + 416, y, 200, 36), $"Banned ({Share.Bans.Count})", "Owner only: players you've banned", on: showBanned)) { showBanned = true; showLevels = false; sunsScroll = 0; }
             if (EditorGui.Button(new Rect(r.xMax - 30 - 128, y, 128, 34), Share.Busy ? "Loading" : "Refresh") && !Share.Busy) Share.Refresh();
             y += 46;
             var listRect = new Rect(x, y, w, r.yMax - y - 20);
             if (e.type == EventType.ScrollWheel && listRect.Contains(e.mousePosition)) { sunsScroll = Mathf.Max(0, sunsScroll + e.delta.y * 20); e.Use(); }
             if (showLevels) { DrawLevels(listRect); return; }
+            if (showBanned) { DrawBanned(listRect); return; }
             var board = Share.Leaderboard;
             if (board.Count == 0)
                 EditorGui.Text(new Rect(x, y + 10, w, 26), Share.Busy ? "Loading..." : "Nobody has suns yet. Beat a rated boss to be first!", Dim, 15);
@@ -598,6 +667,7 @@ namespace SunLoader
                 Sun(new Rect(row.xMax - 290, row.y + 8, 24, 24), Yellow);
                 EditorGui.Text(new Rect(row.xMax - 258, row.y + 9, 100, 24), p.Suns.ToString(), Yellow, 17);
                 EditorGui.Text(new Rect(row.xMax - 160, row.y + 11, 150, 22), $"{p.Beaten} beaten", Dim, 13);
+                if (Share.IsOwner && !mine && EditorGui.Button(new Rect(row.xMax - 410, row.y + 4, 100, 32), "Ban", "Owner only: ban this player", color: RedBtn)) { banning = p.Name; banReason = ""; focus = "banreason"; focusText = ""; }
             }
             sunsScroll = Mathf.Min(sunsScroll, Mathf.Max(0, board.Count * h - listRect.height));
         }
@@ -826,7 +896,7 @@ namespace SunLoader
             {
                 if (e.keyCode is KeyCode.Return or KeyCode.KeypadEnter) { Submit(); e.Use(); return true; }
                 if (e.keyCode == KeyCode.Escape) { CancelTyping(); e.Use(); return true; }
-                var max = focus == "desc" ? 200 : 60;
+                var max = focus is "desc" or "banreason" ? 200 : 60;
                 if (e.keyCode == KeyCode.Backspace) { if (focusText.Length > 0) focusText = focusText[..^1]; }
                 else if (e.character != '\0' && !char.IsControl(e.character) && focusText.Length < max) focusText += e.character;
                 e.Use();
@@ -834,7 +904,8 @@ namespace SunLoader
             }
             if (e.keyCode == KeyCode.Escape)
             {
-                if (rating != null) rating = null;
+                if (banning != null) banning = null;
+                else if (rating != null) rating = null;
                 else if (uploading != null) uploading = null;
                 else if (screen == Screen.New) ShowList();
                 else Toggle();
@@ -851,6 +922,7 @@ namespace SunLoader
                 case "new": newName = focusText; focus = null; return;
                 case "desc": uploadDesc = focusText; focus = null; return;
                 case "search": search = focusText; focus = null; return;
+                case "banreason": banReason = focusText; focus = null; return;
             }
             if (focus == "rename" && renaming != null)
             {
@@ -878,10 +950,10 @@ namespace SunLoader
             catch (Exception e) { Say("Couldn't open the folder: " + e.Message, true); }
         }
 
-        // Only ever opens github.com pages (the bosses repo, a boss's page, or the login page).
+        // Only ever opens github.com pages (the bosses repo, a boss's page, the login page) and Discord invites.
         static void OpenUrl(string url)
         {
-            if (url == null || !url.StartsWith("https://github.com/")) return;
+            if (url == null || !(url.StartsWith("https://github.com/") || url.StartsWith("https://discord.gg/") || url.StartsWith("https://discord.com/invite/"))) return;
             try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(url) { UseShellExecute = true }); }
             catch (Exception e) { Say("Couldn't open the browser: " + e.Message, true); }
         }

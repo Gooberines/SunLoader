@@ -21,6 +21,11 @@ namespace SunLoader
         public bool IsLevel;            // one of the game's own levels, not a shared boss
         public string Artist;           // levels only
         public int Suns;                // 1-20, set by the repository owner (a label); 0 = unrated
+        public string CurrentHash, RatedHash;   // the attacks now, and when the owner rated it
+        // A boss changed after it was rated earns nothing until it's rated again, so nobody can
+        // get a hard rating and then swap in an easy boss.
+        public bool RatingStale => !IsLevel && RatedHash != null && CurrentHash != null && RatedHash != CurrentHash;
+        public int EarnableSuns => RatingStale ? 0 : Suns;
         public string Difficulty => Share.DifficultyFor(Suns);
         public List<string> Labels = new();
         public int Clears;              // players who beat it
@@ -81,6 +86,7 @@ namespace SunLoader
             { "Easy", "Normal", "Hard", "Harder", "Insane", "Easy Demon", "Medium Demon", "Hard Demon", "Insane Demon", "Extreme Demon" };
         const string LabelPrefix = "suns: ";
         const string ClearMarker = "<!-- sunloader-clear v1 -->";
+        const string RatedOpen = "<!-- sunloader-rated ";
 
         // 1-2 Easy, 3 Normal, 4-5 Hard, 6-7 Harder, 8-9 Insane, then two suns per demon tier
         // (10-11 Easy Demon ... 16-17 Insane Demon) and 18-20 Extreme Demon.
@@ -98,6 +104,62 @@ namespace SunLoader
             <= 17 => "Insane Demon",
             _ => "Extreme Demon",
         };
+
+        // ---------- bans ----------
+        // The owner's list, kept on one issue only they can edit (other players' copies of the
+        // title are ignored). Banned players earn no suns, can't share or rate, and leave the
+        // leaderboard; they can appeal on Discord.
+
+        const string BansTitle = "[Sun Loader] Banned players";
+        const string BansMarker = "<!-- sunloader-bans v1 -->";
+        // The Discord invite for appeals. Set Sharing.DiscordInvite to override it.
+        const string BuiltInDiscord = "";
+        public static string DiscordInvite => Plugin.ShareDiscord.Value.Trim() is { Length: > 0 } link ? link : BuiltInDiscord;
+
+        static int bansIssue;
+        public static volatile Dictionary<string, string> Bans = new(StringComparer.OrdinalIgnoreCase);
+        public static bool IsBanned(string name) => name != null && Bans.ContainsKey(name);
+        public static bool IAmBanned => IsBanned(Login);
+        public static string MyBanReason => Login != null && Bans.TryGetValue(Login, out var reason) ? reason : null;
+        const string BannedMessage = "You're banned from sharing and rating. You can appeal on the Discord.";
+
+        static bool ReadBans(JsonNode issue)
+        {
+            if ((string)issue["title"] != BansTitle || (string)issue["user"]?["login"] is not { } author
+                || !string.Equals(author, Repo.Split('/')[0], StringComparison.OrdinalIgnoreCase)) return false;
+            var bans = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var line in ((string)issue["body"] ?? "").Split('\n'))
+            {
+                if (!line.StartsWith("- ")) continue;
+                var parts = line[2..].Split('|', 2);
+                if (parts[0].Trim().Length > 0) bans[parts[0].Trim()] = parts.Length > 1 ? parts[1].Trim() : "";
+            }
+            Bans = bans;
+            bansIssue = (int)issue["number"];
+            return true;
+        }
+
+        // Owner only: bans a player, or unbans them with reason null.
+        public static void SetBan(string player, string reason, Action<string> done)
+        {
+            if (!IsOwner) { Error = "Only the owner of " + Repo + " can ban players."; return; }
+            if (bansIssue == 0) { Error = "The ban list wasn't found. Press Refresh and try again."; return; }
+            if (string.Equals(player, Login, StringComparison.OrdinalIgnoreCase)) { Error = "You can't ban yourself."; return; }
+            Run((reason == null ? "Unbanning " : "Banning ") + player, async () =>
+            {
+                var bans = new Dictionary<string, string>(Bans, StringComparer.OrdinalIgnoreCase);
+                if (reason == null) bans.Remove(player);
+                else bans[player] = reason.Replace("\r", " ").Replace("\n", " ").Trim();
+                var lines = bans.OrderBy(kv => kv.Key).Select(kv => $"- {kv.Key} | {kv.Value}");
+                var body = "Players banned from Sun Loader's suns, sharing and rating. Appeals go to the Discord server.\n\n"
+                    + string.Join("\n", lines) + "\n\n" + BansMarker + "\n";
+                await Api(HttpMethod.Patch, $"https://api.github.com/repos/{Repo}/issues/{bansIssue}", new JsonObject { ["body"] = body });
+                Bans = bans;
+                Bosses = Bosses.Where(b => !IsBanned(b.Author)).ToList();
+                RebuildLeaderboard(All, clearsByBoss);
+                done?.Invoke(reason == null ? $"Unbanned {player}. Press Refresh to bring their bosses back." : $"Banned {player}");
+            });
+        }
 
         public static bool IsOwner => Login != null && string.Equals(Repo.Split('/')[0], Login, StringComparison.OrdinalIgnoreCase);
 
@@ -167,14 +229,14 @@ namespace SunLoader
                     var items = (await Api(HttpMethod.Get, $"https://api.github.com/repos/{Repo}/issues?state=open&per_page=100&page={page}")).AsArray();
                     foreach (var issue in items)
                     {
-                        if (issue["pull_request"] != null) continue;
+                        if (issue["pull_request"] != null || ReadBans(issue)) continue;
                         var b = Parse(issue);
                         if (b != null) list.Add(b);
                     }
                     if (items.Count < 100) break;
                 }
                 await LoadClears(list);
-                Bosses = list.Where(b => !b.IsLevel).ToList();
+                Bosses = list.Where(b => !b.IsLevel && !IsBanned(b.Author)).ToList();
                 Levels = list.Where(b => b.IsLevel).OrderBy(b => b.Stage).ToList();
                 LastRefresh = DateTime.Now;
             });
@@ -208,6 +270,9 @@ namespace SunLoader
             if (!title.StartsWith(TitlePrefix) || !body.Contains(Marker)) return null;
             var data = Between(body, "```sunloader\n", "\n```")?.Trim();
             if (data == null) return null;
+            string currentHash = null;
+            try { currentHash = AttacksHash(JsonNode.Parse(Unpack(data))); }
+            catch { return null; }   // a damaged post isn't listed
             int.TryParse(Field("Attacks"), out var attacks);
             return new SharedBoss
             {
@@ -226,6 +291,7 @@ namespace SunLoader
                 Created = DateTime.TryParse((string)issue["created_at"], out var t) ? t : DateTime.MinValue,
                 Url = (string)issue["html_url"],
                 Data = data,
+                CurrentHash = currentHash,
             };
         }
 
@@ -262,6 +328,7 @@ namespace SunLoader
 
         public static void Upload(BossProject boss, string description, Action<string> done)
         {
+            if (IAmBanned) { Error = BannedMessage; return; }
             if (!SignedIn) { Error = "Sign in with GitHub first."; return; }
             Run("Uploading " + boss.Name, async () =>
             {
@@ -313,6 +380,7 @@ namespace SunLoader
 
         public static void Vote(SharedBoss b, int vote)
         {
+            if (IAmBanned) { Error = BannedMessage; return; }
             if (!SignedIn) { Error = "Sign in with GitHub to rate bosses."; return; }
             Run("Rating " + b.Name, async () =>
             {
@@ -353,6 +421,13 @@ namespace SunLoader
                 var arr = new JsonArray();
                 foreach (var l in labels) arr.Add(l);
                 await Api(HttpMethod.Put, $"https://api.github.com/repos/{Repo}/issues/{b.Number}/labels", new JsonObject { ["labels"] = arr });
+                // Records what was rated, so changing the boss later pauses its suns.
+                if (suns > 0 && !b.IsLevel && b.CurrentHash != null)
+                {
+                    await Api(HttpMethod.Post, $"https://api.github.com/repos/{Repo}/issues/{b.Number}/comments",
+                        new JsonObject { ["body"] = $"Rated {suns} suns ({DifficultyFor(suns)}).\n\n{RatedOpen}{b.CurrentHash} -->" });
+                    b.RatedHash = b.CurrentHash;
+                }
                 b.Labels = labels;
                 b.Suns = suns;
                 RebuildLeaderboard(All, clearsByBoss);
@@ -366,6 +441,7 @@ namespace SunLoader
         static async Task LoadClears(List<SharedBoss> bosses)
         {
             var byBoss = new Dictionary<int, HashSet<string>>();
+            var numbers = bosses.ToDictionary(b => b.Number);
             for (int page = 1; page <= 30; page++)
             {
                 var items = (await Api(HttpMethod.Get, $"https://api.github.com/repos/{Repo}/issues/comments?per_page=100&page={page}")).AsArray();
@@ -374,7 +450,15 @@ namespace SunLoader
                     var body = (string)c["body"] ?? "";
                     var user = (string)c["user"]?["login"];
                     var issueUrl = (string)c["issue_url"] ?? "";
-                    if (user == null || !body.Contains(ClearMarker) || !int.TryParse(issueUrl[(issueUrl.LastIndexOf('/') + 1)..], out var number)) continue;
+                    if (user == null || !int.TryParse(issueUrl[(issueUrl.LastIndexOf('/') + 1)..], out var number)) continue;
+                    numbers.TryGetValue(number, out var post);
+                    // The owner's record of what they rated; the newest one counts.
+                    if (body.Contains(RatedOpen) && post != null && string.Equals(user, Repo.Split('/')[0], StringComparison.OrdinalIgnoreCase))
+                        post.RatedHash = Between(body, RatedOpen, " -->")?.Trim();
+                    if (!body.Contains(ClearMarker)) continue;
+                    // A clear edited after posting, or of a different version of the boss, doesn't count.
+                    if ((string)c["updated_at"] != (string)c["created_at"]) continue;
+                    if (post != null && !post.IsLevel && Between(body, "Attacks: ", "\n")?.Trim() is { } clearHash && clearHash != post.CurrentHash) continue;
                     if (!byBoss.TryGetValue(number, out var set)) byBoss[number] = set = new(StringComparer.OrdinalIgnoreCase);
                     set.Add(user);
                 }
@@ -390,13 +474,14 @@ namespace SunLoader
             foreach (var b in bosses)
             {
                 byBoss.TryGetValue(b.Number, out var who);
-                b.Clears = who?.Count ?? 0;
+                var fair = who?.Where(n => !IsBanned(n)).ToList();
+                b.Clears = fair?.Count ?? 0;
                 b.ClearedByMe = Login != null && who != null && who.Contains(Login);
-                if (who == null || b.Suns == 0) continue;
-                foreach (var name in who)
+                if (fair == null || b.EarnableSuns == 0) continue;
+                foreach (var name in fair)
                 {
                     if (!players.TryGetValue(name, out var p)) players[name] = p = new Player { Name = name };
-                    p.Suns += b.Suns;
+                    p.Suns += b.EarnableSuns;
                     p.Beaten++;
                 }
             }
@@ -408,21 +493,40 @@ namespace SunLoader
 
         static string ClearsFile => Path.Combine(Plugin.Root, "clears.json");
 
-        public static void AddClear(int issue)
+        public static void AddClear(int issue, string evidence)
         {
             var (pending, posted) = ReadClears();
             if (posted.Contains(issue) || pending.Contains(issue)) return;
             pending.Add(issue);
+            SetDetail(issue.ToString(), evidence);
             WriteClears(pending, posted);
             nextFlush = 0;
         }
 
         // A game level beaten: recorded on its page, or kept by name until the level list is loaded.
-        public static void AddLevelClear(string stage)
+        public static void AddLevelClear(string stage, string evidence)
         {
-            if (LevelFor(stage) is { } level) { AddClear(level.Number); return; }
+            if (LevelFor(stage) is { } level) { AddClear(level.Number, evidence); return; }
+            SetDetail("stage:" + stage, evidence);
             var waiting = WaitingLevels();
             if (!waiting.Contains(stage)) { waiting.Add(stage); WriteWaitingLevels(waiting); }
+        }
+
+        // Each waiting clear's run details, posted with it for the owner to review.
+        static string DetailsFile => Path.Combine(Plugin.Root, "clears-details.json");
+
+        static JsonObject Details()
+        {
+            try { return File.Exists(DetailsFile) ? JsonNode.Parse(File.ReadAllText(DetailsFile)).AsObject() : new JsonObject(); }
+            catch { return new JsonObject(); }
+        }
+
+        static void SetDetail(string key, string evidence)
+        {
+            var details = Details();
+            details[key] = evidence;
+            Directory.CreateDirectory(Plugin.Root);
+            File.WriteAllText(DetailsFile, details.ToJsonString());
         }
 
         static string WaitingFile => Path.Combine(Plugin.Root, "clears-levels.json");
@@ -476,9 +580,9 @@ namespace SunLoader
             if (Levels.Count > 0 && WaitingLevels() is { Count: > 0 } waiting)
             {
                 WriteWaitingLevels(new());
-                foreach (var stage in waiting) if (LevelFor(stage) is { } level) AddClear(level.Number);
+                foreach (var stage in waiting) if (LevelFor(stage) is { } level) AddClear(level.Number, (string)Details()["stage:" + stage]);
             }
-            if (!SignedIn || UnityEngine.Time.realtimeSinceStartup < nextFlush) return;
+            if (!SignedIn || IAmBanned || UnityEngine.Time.realtimeSinceStartup < nextFlush) return;
             nextFlush = UnityEngine.Time.realtimeSinceStartup + 30;
             var (pending, _) = ReadClears();
             if (pending.Count == 0) return;
@@ -488,7 +592,7 @@ namespace SunLoader
                 {
                     if (!(clearsByBoss.TryGetValue(issue, out var who) && who.Contains(Login)))
                         await Api(HttpMethod.Post, $"https://api.github.com/repos/{Repo}/issues/{issue}/comments",
-                            new JsonObject { ["body"] = "Beat it in Sun Loader! \U0001F389\n\n" + ClearMarker });
+                            new JsonObject { ["body"] = $"Beat it in Sun Loader! \U0001F389\n\n{(string)Details()[issue.ToString()]}\n\n{ClearMarker}" });
                     var (p, posted) = ReadClears();
                     p.Remove(issue);
                     if (!posted.Contains(issue)) posted.Add(issue);

@@ -51,6 +51,14 @@ player gets it. (To test before rebuilding, put it in `Sharing.GitHubAppClientId
 - **Suns:** a clear is a comment containing `<!-- sunloader-clear v1 -->`. The game only posts one after a fair run,
   but anyone could type one by hand, so delete clear comments that look fake and their suns go away.
 
+- **Ban players:** signed in as the owner, the **Suns** tab has **Ban** on leaderboard rows and a **Banned** list with
+  **Unban**. Bans are saved on the locked `[Sun Loader] Banned players` issue, so the reason you give is public. A
+  banned player earns no suns, leaves the leaderboard, can't share or rate, and their bosses are hidden. A ban covers
+  their GitHub login; it doesn't kick them from online lobbies.
+- **Appeals:** set `BuiltInDiscord` in `mod/SunLoader/Share.cs` to your Discord invite (or `Sharing.DiscordInvite` in the
+  config to try it first). Banned players and flagged runs get an **Appeal on Discord** button.
+- **Review clears:** each clear comment records the run's length and Sun Loader version.
+
 Bosses are attack data only (attack names, times, positions and settings). Sun Loader
 never runs code from a downloaded boss, caps its size, and only accepts a song *file name*
 from it (the song itself is never downloaded).
