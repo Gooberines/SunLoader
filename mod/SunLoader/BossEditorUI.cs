@@ -100,6 +100,8 @@ namespace SunLoader
                 if (Input.GetKeyDown(Plugin.BossMenuKey.Value)) BossMenu.Toggle();
                 CustomBosses.Update();
                 LobbySync.Update();
+                Share.Update();
+                if ((open || NoDamage.On) && CustomBosses.Active != null) CustomBosses.RunTainted = true;
                 NoDamage.On = (noDamageToggle || preview != null) && EditorSession.InLevel;
                 if (Input.GetKeyDown(Plugin.EditorKey.Value)) Toggle();
                 // A boss started with Edit from the Bosses menu opens the editor once its level is up.
@@ -182,6 +184,9 @@ namespace SunLoader
             var ms = EditorSession.MusicMs();
             if (ms >= 0) playhead = ms;
         }
+
+        // A message shown at the top of the screen, also when the editor is closed.
+        internal static void Toast(string msg) { Say(msg); statusUntil = Time.realtimeSinceStartup + 10; }
 
         static void Say(string msg) { status = msg; statusUntil = Time.realtimeSinceStartup + 6; Plugin.Logger.LogInfo("Editor: " + msg); }
 

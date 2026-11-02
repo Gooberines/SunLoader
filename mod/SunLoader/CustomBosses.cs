@@ -38,6 +38,8 @@ namespace SunLoader
         public static BossProject Active;
         // Open the editor as soon as the active boss's level starts.
         public static bool EditOnStart;
+        // Set when the editor or no-damage mode was used during this run: no stars for it.
+        public static bool RunTainted;
         // Set once the active boss's spawner has started, so the menus we pass through on the
         // way in don't count as leaving it.
         static bool started;
@@ -227,6 +229,7 @@ namespace SunLoader
 
             Active = b;
             EditOnStart = edit;
+            RunTainted = edit;
             started = false;
             levelSince = -1;
             pendingLevel = stage.Checkpoint;
@@ -306,6 +309,30 @@ namespace SunLoader
             return Active.Path;
         }
 
+        // The game says the last checkpoint was cleared: the boss is beaten.
+        public static void OnBeaten()
+        {
+            var b = Active;
+            if (b == null) return;
+            Plugin.Logger.LogInfo($"Bosses: beat '{b.Name}'" + (RunTainted ? " (with the editor or no damage)" : ""));
+            if (b.SharedIssue == null) { EditorGui.Toast($"You beat '{b.Name}'!"); return; }
+            if (RunTainted) { EditorGui.Toast($"You beat '{b.Name}', but with the editor or no damage on, so it doesn't count for stars"); return; }
+            string hash = null, saved = null;
+            try
+            {
+                var file = JsonNode.Parse(File.ReadAllText(b.Path));
+                hash = Share.AttacksHash(file);
+                saved = (string)file["shared"]?["hash"];
+            }
+            catch (Exception e) { Plugin.Logger.LogWarning("Bosses: couldn't check the boss file: " + e.Message); }
+            if (hash == null || hash != saved) { EditorGui.Toast($"You beat '{b.Name}', but your copy was changed, so it doesn't count for stars"); return; }
+            Share.AddClear(b.SharedIssue.Value);
+            var online = Share.Bosses.FirstOrDefault(x => x.Number == b.SharedIssue);
+            var stars = online?.Stars ?? 0;
+            EditorGui.Toast(stars > 0 ? $"You beat '{b.Name}'! +{stars} stars" + (Share.SignedIn ? "" : " (sign in with GitHub to collect them)")
+                : $"You beat '{b.Name}'!" + (Share.SignedIn ? "" : " Sign in with GitHub to record it."));
+        }
+
         // Called every frame. Back on the main menu or the playlist screen means the boss run is over.
         public static void Update()
         {
@@ -364,6 +391,18 @@ namespace SunLoader
             pPracticeList = list;
             diff = ModelGameDifficultyEnum.NORMAL;
             Plugin.Logger.LogInfo("Bosses: the game is starting the boss's stage");
+        }
+    }
+
+    // A playlist run ends by clearing the level's last checkpoint.
+    [HarmonyPatch(typeof(LogicArcadeEndLevel), nameof(LogicArcadeEndLevel.onCompleteLastCheckpoint))]
+    static class BeatenPatch
+    {
+        static void Postfix(LogicArcadeEndLevel __instance)
+        {
+            if (!SafeRead.IsObjectOf<LogicArcadeEndLevel>(__instance.Pointer)) return;
+            try { CustomBosses.OnBeaten(); }
+            catch (Exception e) { Plugin.Logger.LogError("Bosses: " + e); }
         }
     }
 

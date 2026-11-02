@@ -18,6 +18,11 @@ namespace SunLoader
         public int Number;              // the GitHub issue that holds it
         public string Name, Author, Stage, Music, Description, Url, Data;
         public int Attacks, Likes, Dislikes, Comments;
+        public string Difficulty;       // set by the repository owner (a label), or null if unrated
+        public List<string> Labels = new();
+        public int Clears;              // players who beat it
+        public bool ClearedByMe;
+        public int Stars => Share.StarsFor(Difficulty);
         public DateTime Created;
         public int Score => Likes - Dislikes;
     }
@@ -57,6 +62,30 @@ namespace SunLoader
         // Your rating per boss, as far as this session knows: +1, -1 or 0.
         public static readonly Dictionary<int, int> MyVotes = new();
 
+        // ---------- difficulty, stars and the leaderboard ----------
+        // Like Geometry Dash: the repository owner rates a boss with a difficulty, stored as an
+        // issue label (only the owner and collaborators can set labels, so ratings can't be faked).
+        // Beating a rated boss earns its stars; each clear is a comment on the boss's issue.
+
+        public static readonly string[] Difficulties =
+            { "Easy", "Normal", "Hard", "Harder", "Insane", "Easy Demon", "Medium Demon", "Hard Demon", "Insane Demon", "Extreme Demon" };
+        const string LabelPrefix = "difficulty: ";
+        const string ClearMarker = "<!-- sunloader-clear v1 -->";
+
+        public static int StarsFor(string difficulty) => difficulty switch
+        {
+            "Easy" => 2, "Normal" => 3, "Hard" => 4, "Harder" => 6, "Insane" => 8,
+            null => 0,
+            _ => difficulty.EndsWith("Demon") ? 10 : 0,
+        };
+
+        public static bool IsOwner => Login != null && string.Equals(Repo.Split('/')[0], Login, StringComparison.OrdinalIgnoreCase);
+
+        public class Player { public string Name; public int Stars, Beaten; }
+        public static volatile List<Player> Leaderboard = new();
+        public static int MyStars => Leaderboard.FirstOrDefault(p => p.Name == Login)?.Stars ?? 0;
+        public static int MyBeaten => Leaderboard.FirstOrDefault(p => p.Name == Login)?.Beaten ?? 0;
+
         static readonly HttpClient http = MakeClient();
         static string TokenFile => Path.Combine(Plugin.Root, "github-login.dat");
 
@@ -79,6 +108,7 @@ namespace SunLoader
                 {
                     var me = await Api(HttpMethod.Get, "https://api.github.com/user");
                     Login = (string)me["login"];
+                    RebuildLeaderboard(Bosses, clearsByBoss);
                 });
             }
             catch (Exception e) { Plugin.Logger.LogWarning("Sharing: couldn't read the saved login: " + e.Message); token = null; }
@@ -123,6 +153,7 @@ namespace SunLoader
                     }
                     if (items.Count < 100) break;
                 }
+                await LoadClears(list);
                 Bosses = list;
                 LastRefresh = DateTime.Now;
             });
@@ -133,6 +164,8 @@ namespace SunLoader
             var title = (string)issue["title"] ?? "";
             var body = (string)issue["body"] ?? "";
             if (!title.StartsWith(TitlePrefix) || !body.Contains(Marker)) return null;
+            var labels = issue["labels"]?.AsArray().Select(l => (string)l?["name"]).Where(n => n != null).ToList() ?? new List<string>();
+            var difficulty = labels.Where(n => n.StartsWith(LabelPrefix)).Select(n => n[LabelPrefix.Length..]).FirstOrDefault(d => Difficulties.Contains(d));
             var data = Between(body, "```sunloader\n", "\n```")?.Trim();
             if (data == null) return null;
             string Field(string label) => Between(body, $"**{label}:** ", "\n")?.Trim();
@@ -140,6 +173,8 @@ namespace SunLoader
             return new SharedBoss
             {
                 Number = (int)issue["number"],
+                Difficulty = difficulty,
+                Labels = labels,
                 Name = title[TitlePrefix.Length..].Trim(),
                 Author = (string)issue["user"]?["login"],
                 Stage = Field("Stage"),
@@ -177,7 +212,7 @@ namespace SunLoader
             file["name"] = name;
             // A song is only a file name in your music folder; never a path somewhere else.
             if (file["music"] != null) file["music"] = Path.GetFileName((string)file["music"]);
-            file["shared"] = new JsonObject { ["repo"] = Repo, ["issue"] = b.Number, ["author"] = b.Author };
+            file["shared"] = new JsonObject { ["repo"] = Repo, ["issue"] = b.Number, ["author"] = b.Author, ["hash"] = AttacksHash(file) };
             Directory.CreateDirectory(CustomBosses.Dir);
             File.WriteAllText(Path.Combine(CustomBosses.Dir, name + ".json"), file.ToJsonString(Plugin.Pretty));
             Plugin.Logger.LogInfo($"Sharing: downloaded '{b.Name}' by {b.Author} as '{name}'");
@@ -203,7 +238,7 @@ namespace SunLoader
                     : await Api(HttpMethod.Post, $"https://api.github.com/repos/{Repo}/issues", payload);
                 var number = (int)issue["number"];
                 file = JsonNode.Parse(File.ReadAllText(boss.Path)).AsObject();
-                file["shared"] = new JsonObject { ["repo"] = Repo, ["issue"] = number, ["author"] = Login };
+                file["shared"] = new JsonObject { ["repo"] = Repo, ["issue"] = number, ["author"] = Login, ["hash"] = AttacksHash(file) };
                 File.WriteAllText(boss.Path, file.ToJsonString(Plugin.Pretty));
                 Plugin.Logger.LogInfo($"Sharing: {(mine ? "updated" : "uploaded")} '{boss.Name}' as {Repo}#{number}");
                 done?.Invoke(mine ? $"Updated '{boss.Name}' online" : $"Shared '{boss.Name}'! Others can find it in the Online tab.");
@@ -265,6 +300,137 @@ namespace SunLoader
             });
         }
 
+        // A fingerprint of a boss file's attacks, to tell whether a downloaded boss was changed.
+        public static string AttacksHash(JsonNode file) => Hash(file["layers"]?.ToJsonString() ?? "");
+
+        // Owner only: rates a boss (null takes the rating away). Other labels stay.
+        public static void SetDifficulty(SharedBoss b, string difficulty, Action<string> done)
+        {
+            if (!IsOwner) { Error = "Only the owner of " + Repo + " can rate bosses."; return; }
+            Run("Rating " + b.Name, async () =>
+            {
+                var labels = b.Labels.Where(l => !l.StartsWith(LabelPrefix)).ToList();
+                if (difficulty != null) labels.Add(LabelPrefix + difficulty);
+                var arr = new JsonArray();
+                foreach (var l in labels) arr.Add(l);
+                await Api(HttpMethod.Put, $"https://api.github.com/repos/{Repo}/issues/{b.Number}/labels", new JsonObject { ["labels"] = arr });
+                b.Labels = labels;
+                b.Difficulty = difficulty;
+                RebuildLeaderboard(Bosses, clearsByBoss);
+                done?.Invoke(difficulty == null ? $"'{b.Name}' is unrated now" : $"Rated '{b.Name}' {difficulty} ({StarsFor(difficulty)} stars)");
+            });
+        }
+
+        // Who beat which boss, from every clear comment in the repository (one listing for all).
+        static Dictionary<int, HashSet<string>> clearsByBoss = new();
+
+        static async Task LoadClears(List<SharedBoss> bosses)
+        {
+            var byBoss = new Dictionary<int, HashSet<string>>();
+            for (int page = 1; page <= 30; page++)
+            {
+                var items = (await Api(HttpMethod.Get, $"https://api.github.com/repos/{Repo}/issues/comments?per_page=100&page={page}")).AsArray();
+                foreach (var c in items)
+                {
+                    var body = (string)c["body"] ?? "";
+                    var user = (string)c["user"]?["login"];
+                    var issueUrl = (string)c["issue_url"] ?? "";
+                    if (user == null || !body.Contains(ClearMarker) || !int.TryParse(issueUrl[(issueUrl.LastIndexOf('/') + 1)..], out var number)) continue;
+                    if (!byBoss.TryGetValue(number, out var set)) byBoss[number] = set = new(StringComparer.OrdinalIgnoreCase);
+                    set.Add(user);
+                }
+                if (items.Count < 100) break;
+            }
+            clearsByBoss = byBoss;
+            RebuildLeaderboard(bosses, byBoss);
+        }
+
+        static void RebuildLeaderboard(List<SharedBoss> bosses, Dictionary<int, HashSet<string>> byBoss)
+        {
+            var players = new Dictionary<string, Player>(StringComparer.OrdinalIgnoreCase);
+            foreach (var b in bosses)
+            {
+                byBoss.TryGetValue(b.Number, out var who);
+                b.Clears = who?.Count ?? 0;
+                b.ClearedByMe = Login != null && who != null && who.Contains(Login);
+                if (who == null || b.Stars == 0) continue;
+                foreach (var name in who)
+                {
+                    if (!players.TryGetValue(name, out var p)) players[name] = p = new Player { Name = name };
+                    p.Stars += b.Stars;
+                    p.Beaten++;
+                }
+            }
+            Leaderboard = players.Values.OrderByDescending(p => p.Stars).ThenByDescending(p => p.Beaten).ThenBy(p => p.Name).ToList();
+        }
+
+        // ---------- clears ----------
+        // A clear waits in clears.json until it's posted (you may be offline or signed out).
+
+        static string ClearsFile => Path.Combine(Plugin.Root, "clears.json");
+
+        public static void AddClear(int issue)
+        {
+            var (pending, posted) = ReadClears();
+            if (posted.Contains(issue) || pending.Contains(issue)) return;
+            pending.Add(issue);
+            WriteClears(pending, posted);
+            nextFlush = 0;
+        }
+
+        static (List<int> pending, List<int> posted) ReadClears()
+        {
+            try
+            {
+                if (File.Exists(ClearsFile))
+                {
+                    var j = JsonNode.Parse(File.ReadAllText(ClearsFile));
+                    return (j["pending"]?.AsArray().Select(n => (int)n).ToList() ?? new(), j["posted"]?.AsArray().Select(n => (int)n).ToList() ?? new());
+                }
+            }
+            catch (Exception e) { Plugin.Logger.LogWarning("Sharing: couldn't read clears.json: " + e.Message); }
+            return (new(), new());
+        }
+
+        static void WriteClears(List<int> pending, List<int> posted)
+        {
+            var j = new JsonObject
+            {
+                ["pending"] = new JsonArray(pending.Select(n => (JsonNode)n).ToArray()),
+                ["posted"] = new JsonArray(posted.Select(n => (JsonNode)n).ToArray()),
+            };
+            Directory.CreateDirectory(Plugin.Root);
+            File.WriteAllText(ClearsFile, j.ToJsonString(Plugin.Pretty));
+        }
+
+        static float nextFlush;
+
+        // Called every frame: posts waiting clears when signed in and not busy.
+        public static void Update()
+        {
+            if (Busy || !SignedIn || !Configured || UnityEngine.Time.realtimeSinceStartup < nextFlush) return;
+            nextFlush = UnityEngine.Time.realtimeSinceStartup + 30;
+            var (pending, _) = ReadClears();
+            if (pending.Count == 0) return;
+            Run("Saving your clears", async () =>
+            {
+                foreach (var issue in pending)
+                {
+                    if (!(clearsByBoss.TryGetValue(issue, out var who) && who.Contains(Login)))
+                        await Api(HttpMethod.Post, $"https://api.github.com/repos/{Repo}/issues/{issue}/comments",
+                            new JsonObject { ["body"] = "Beat it in Sun Loader! \U0001F389\n\n" + ClearMarker });
+                    var (p, posted) = ReadClears();
+                    p.Remove(issue);
+                    if (!posted.Contains(issue)) posted.Add(issue);
+                    WriteClears(p, posted);
+                    if (!clearsByBoss.TryGetValue(issue, out who)) clearsByBoss[issue] = who = new(StringComparer.OrdinalIgnoreCase);
+                    who.Add(Login);
+                    Plugin.Logger.LogInfo($"Sharing: posted your clear of #{issue}");
+                }
+                RebuildLeaderboard(Bosses, clearsByBoss);
+            });
+        }
+
         // ---------- GitHub login (device flow) ----------
 
         public static void StartLogin()
@@ -305,6 +471,7 @@ namespace SunLoader
                     token = (string)res["access_token"];
                     var me = await Api(HttpMethod.Get, "https://api.github.com/user");
                     Login = (string)me["login"];
+                    RebuildLeaderboard(Bosses, clearsByBoss);
                     Directory.CreateDirectory(Plugin.Root);
                     File.WriteAllBytes(TokenFile, Dpapi.Protect(Encoding.UTF8.GetBytes(token)));
                     Status = null; Error = null;

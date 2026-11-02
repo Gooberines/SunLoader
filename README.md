@@ -11,6 +11,9 @@ A mod loader and in-game boss editor for **Just Shapes & Beats** (Steam, Windows
   list.
 - **Share and rate bosses:** the **Online** tab lists bosses other players shared, best rated first. Download any of
   them, rate them 👍 / 👎, and share your own (sign in with GitHub to post and rate; browsing needs no account).
+- **Difficulty ratings and stars, like Geometry Dash:** the owner of the bosses repository rates shared bosses from
+  Easy to Extreme Demon. Beating a rated boss earns its stars (Easy 2, Normal 3, Hard 4, Harder 6, Insane 8, any
+  Demon 10), and the **Stars** tab has your star counter and a leaderboard.
 - **Custom bosses in online multiplayer:** the lobby host picks one of their bosses, and everyone in the lobby with Sun
   Loader plays it when its stage comes up. The boss is sent through the Steam lobby; nobody has to download it.
 - **Boss editor:** press **F1** in any level to place attacks on the game screen, set their timing and settings,
@@ -53,6 +56,10 @@ To install by hand instead:
 - **Shared bosses** are issues in [Gooberines/SunLoader-Bosses](https://github.com/Gooberines/SunLoader-Bosses); a
   boss's 👍 / 👎 reactions are its rating. Signing in uses a GitHub App that can only post and react to issues there
   ([setup](docs/SHARING-SETUP.md)). The login is saved encrypted for your Windows user.
+- **Ratings and stars:** a boss's difficulty is a `difficulty: …` label on its issue, set by the repository owner
+  (Online tab → **Rate**); only the owner and collaborators can set labels. A clear is a comment posted from the
+  player's login when they beat a downloaded, unchanged boss without the editor or no-damage mode. Clears wait in
+  `BepInEx\SunLoader\clears.json` until you're signed in, and count for stars once the boss is rated.
 - **Multiplayer:** in an online lobby, the host's boss list shows **Use in lobby**. Players need Sun Loader to see the
   custom boss (others get the normal level), and a custom song only plays for players who have the same song file.
 - **Level replacements** (F1 in a normal level) are saved to `BepInEx\SunLoader\<level name>.json`. That level plays

@@ -11,7 +11,7 @@ namespace SunLoader
     static class BossMenu
     {
         public static bool Open;
-        enum Screen { List, New, Online }
+        enum Screen { List, New, Online, Stars }
         static Screen screen;
         static List<BossProject> bosses = new();
         static float scroll, stageScroll, onlineScroll;
@@ -22,14 +22,14 @@ namespace SunLoader
         // The one text field being typed in: "new", "rename", "desc" or "search".
         static string focus, focusText = "";
         static BossProject renaming, deleting, uploading;
-        static SharedBoss removing;
+        static SharedBoss removing, rating;
 
         // New boss form.
         static string newName = "", newStage;
         static bool newWithOriginal;
 
         // Online tab.
-        static bool sortNew;
+        static int sortMode;   // 0 top rated, 1 newest, 2 most stars
         static string search = "", uploadDesc = "";
 
         static readonly Color Bg = new(0.02f, 0.02f, 0.03f, 0.97f), Row = new(0.09f, 0.09f, 0.12f, 1f), RowHover = new(0.14f, 0.1f, 0.13f);
@@ -47,14 +47,22 @@ namespace SunLoader
         static void ShowList()
         {
             screen = Screen.List;
-            focus = null; renaming = deleting = uploading = null; removing = null;
+            focus = null; renaming = deleting = uploading = null; removing = rating = null;
             Refresh();
+        }
+
+        static void ShowStars()
+        {
+            screen = Screen.Stars;
+            focus = null; renaming = deleting = uploading = null; removing = rating = null;
+            starsScroll = 0;
+            if (Share.Configured && !Share.Busy && (DateTime.Now - Share.LastRefresh).TotalMinutes > 2) Share.Refresh();
         }
 
         static void ShowOnline()
         {
             screen = Screen.Online;
-            focus = null; renaming = deleting = uploading = null; removing = null;
+            focus = null; renaming = deleting = uploading = null; removing = rating = null;
             onlineScroll = 0;
             if (Share.Configured && !Share.Busy && (DateTime.Now - Share.LastRefresh).TotalMinutes > 2) Share.Refresh();
         }
@@ -81,10 +89,11 @@ namespace SunLoader
             if (e.type == EventType.KeyDown && Keys(e)) return;
 
             // With a popup up, the menu behind it is only painted, so clicks can't reach it.
-            var modal = Share.UserCode != null || uploading != null;
+            var modal = Share.UserCode != null || uploading != null || rating != null;
             if (!modal || e.type == EventType.Repaint) DrawMenu(vw);
             if (Share.UserCode != null) DrawLogin(vw);
             else if (uploading != null) DrawUpload(vw);
+            else if (rating != null) DrawRate(vw);
         }
 
         static void DrawMenu(float vw)
@@ -98,12 +107,19 @@ namespace SunLoader
             float x = r.x + 30, y = r.y + 20, w = r.width - 60;
             Theme.Title(new Rect(x, y - 2, 560, 60), "SUN LOADER", Pink, 46);
             EditorGui.Text(new Rect(x + 4, y + 54, 400, 24), screen == Screen.New ? "BOSSES  ›  NEW BOSS" : "BOSSES", Color.white, 14);
+            if (Share.SignedIn && screen != Screen.New)
+            {
+                // Your star counter, like GD's.
+                Star(new Rect(x + 120, y + 52, 24, 24), Yellow);
+                EditorGui.Text(new Rect(x + 150, y + 53, 260, 24), $"{Share.MyStars} STARS   ·   {Share.MyBeaten} BEATEN", Yellow, 14);
+            }
 
             // Tabs and Close.
             if (screen != Screen.New)
             {
-                if (EditorGui.Button(new Rect(r.xMax - 560, y + 12, 170, 40), "My bosses", on: screen == Screen.List)) ShowList();
-                if (EditorGui.Button(new Rect(r.xMax - 380, y + 12, 170, 40), "Online", on: screen == Screen.Online)) ShowOnline();
+                if (EditorGui.Button(new Rect(r.xMax - 720, y + 12, 170, 40), "My bosses", on: screen == Screen.List)) ShowList();
+                if (EditorGui.Button(new Rect(r.xMax - 540, y + 12, 170, 40), "Online", on: screen == Screen.Online)) ShowOnline();
+                if (EditorGui.Button(new Rect(r.xMax - 360, y + 12, 170, 40), "Stars", "The star leaderboard", on: screen == Screen.Stars)) ShowStars();
             }
             if (EditorGui.Button(new Rect(r.xMax - 180, y + 12, 150, 40), $"Close ({Plugin.BossMenuKey.Value})")) { Toggle(); return; }
             y += 96;
@@ -117,6 +133,7 @@ namespace SunLoader
 
             if (screen == Screen.New) DrawNew(r, x, y, w);
             else if (screen == Screen.Online) DrawOnline(r, x, y, w);
+            else if (screen == Screen.Stars) DrawStars(r, x, y, w);
             else DrawList(r, x, y, w);
         }
 
@@ -317,16 +334,22 @@ namespace SunLoader
                 if (EditorGui.Button(new Rect(x, y + 2, 240, 36), "Sign in with GitHub", "Needed to share bosses and rate them. Browsing and downloading work without it.", color: BlueBtn) && !Share.Busy) Share.StartLogin();
                 EditorGui.Text(new Rect(x + 252, y + 8, 260, 26), "to share and rate", Dim, 13);
             }
-            var sx = r.xMax - 30 - 640;
-            search = Field(new Rect(sx, y + 2, 270, 36), "search", search, "search bosses, stages, players");
-            if (EditorGui.Button(new Rect(sx + 280, y + 2, 110, 36), "Top", "Best rated first", on: !sortNew)) sortNew = false;
-            if (EditorGui.Button(new Rect(sx + 396, y + 2, 110, 36), "New", "Newest first", on: sortNew)) sortNew = true;
-            if (EditorGui.Button(new Rect(sx + 512, y + 2, 128, 36), Share.Busy ? "Loading" : "Refresh") && !Share.Busy) Share.Refresh();
+            var sx = r.xMax - 30 - 660;
+            search = Field(new Rect(sx, y + 2, 240, 36), "search", search, "search bosses, stages, players");
+            if (EditorGui.Button(new Rect(sx + 250, y + 2, 86, 36), "Top", "Most liked first", on: sortMode == 0)) sortMode = 0;
+            if (EditorGui.Button(new Rect(sx + 342, y + 2, 86, 36), "New", "Newest first", on: sortMode == 1)) sortMode = 1;
+            if (EditorGui.Button(new Rect(sx + 434, y + 2, 96, 36), "Rated", "Only rated bosses, hardest first", on: sortMode == 2)) sortMode = 2;
+            if (EditorGui.Button(new Rect(sx + 536, y + 2, 124, 36), Share.Busy ? "Loading" : "Refresh") && !Share.Busy) Share.Refresh();
             y += 52;
 
             var q = (focus == "search" ? focusText : search).Trim();
             var list = Share.Bosses.Where(b => q.Length == 0 || $"{b.Name} {b.Author} {b.Stage} {b.Description}".Contains(q, StringComparison.OrdinalIgnoreCase));
-            list = sortNew ? list.OrderByDescending(b => b.Created) : list.OrderByDescending(b => b.Score).ThenByDescending(b => b.Likes).ThenByDescending(b => b.Created);
+            list = sortMode switch
+            {
+                1 => list.OrderByDescending(b => b.Created),
+                2 => list.Where(b => b.Difficulty != null).OrderByDescending(b => Array.IndexOf(Share.Difficulties, b.Difficulty)).ThenByDescending(b => b.Score),
+                _ => list.OrderByDescending(b => b.Score).ThenByDescending(b => b.Likes).ThenByDescending(b => b.Created),
+            };
             var shown = list.ToList();
 
             var listRect = new Rect(x, y, w, r.yMax - y - 70);
@@ -355,11 +378,12 @@ namespace SunLoader
             var hover = row.Contains(Event.current.mousePosition);
             Theme.Slanted(row, hover ? RowHover : Row, 0.06f);
             EditorGui.Fill(new Rect(row.x, row.y, 6, row.height), b.Score > 0 ? Green : b.Score < 0 ? Orange : Pink);
-            float tx = row.x + 22, tw = row.width - 640;
+            Badge(new Rect(row.x + 16, row.y + 6, 116, row.height - 12), b.Difficulty, b.ClearedByMe);
+            float tx = row.x + 146, tw = row.width - 640 - 124;
             Theme.Title(new Rect(tx, row.y + 2, tw, 40), b.Name, Color.white, 24);
             var stage = CustomBosses.Stage(b.Stage);
             EditorGui.Text(new Rect(tx, row.y + 42, tw, 22),
-                $"by {b.Author}   ·   on {b.Stage}" + (stage == null && CustomBosses.Stages().Count > 0 ? " (not in your game!)" : "") + $"   ·   {b.Attacks} attacks   ·   {(b.Music != null ? "song: " + b.Music : "stage's song")}   ·   {Ago(b.Created.ToLocalTime())}", Dim, 13);
+                $"by {b.Author}   ·   on {b.Stage}" + (stage == null && CustomBosses.Stages().Count > 0 ? " (not in your game!)" : "") + $"   ·   {b.Attacks} attacks   ·   beaten by {b.Clears}   ·   {Ago(b.Created.ToLocalTime())}", Dim, 13);
             if (b.Description != null) EditorGui.Text(new Rect(tx, row.y + 64, tw, 22), b.Description, new Color(0.85f, 0.85f, 0.9f), 13);
 
             // Rating.
@@ -391,7 +415,9 @@ namespace SunLoader
                 }
                 else if (EditorGui.Button(new Rect(bx, row.y + 50, 190, 30), "Remove online", "Take your boss off the online list (your copy stays)", color: RedBtn)) removing = b;
             }
-            else if (local != null) EditorGui.Text(new Rect(bx + 6, row.y + 54, 360, 22), "In My bosses as '" + local.Name + "'", Green, 12);
+            else if (local != null && !Share.IsOwner) EditorGui.Text(new Rect(bx + 6, row.y + 54, 360, 22), "In My bosses as '" + local.Name + "'", Green, 12);
+            if (Share.IsOwner && removing != b && EditorGui.Button(new Rect(bx + 196, row.y + 50, 170, 30), b.Difficulty == null ? "Rate" : "Change rating", "Owner only: give it a difficulty, which gives it stars", color: new Color(0.5f, 0.4f, 0.05f)))
+                rating = b;
         }
 
         static void Rate(SharedBoss b, int vote)
@@ -410,6 +436,167 @@ namespace SunLoader
                 Say($"Downloaded '{b.Name}'" + (name != b.Name ? $" as '{name}'" : "") + ". It's in My bosses." + (b.Music != null && !Music.Files().Contains(b.Music) ? $" (It uses a song you don't have, '{b.Music}', so the stage's song plays.)" : ""));
             }
             catch (Exception e) { Say("Couldn't download it: " + e.Message, true); }
+        }
+
+        // ---------- difficulty, stars and the leaderboard ----------
+
+        static float starsScroll;
+        static Texture2D starTex;
+
+        public static Color DifficultyColor(string d) => d switch
+        {
+            "Easy" => new Color(0.35f, 0.8f, 1f),
+            "Normal" => new Color(0.3f, 0.85f, 0.4f),
+            "Hard" => new Color(1f, 0.78f, 0.15f),
+            "Harder" => new Color(1f, 0.45f, 0.15f),
+            "Insane" => new Color(1f, 0.2f, 0.65f),
+            "Easy Demon" => new Color(0.62f, 0.35f, 1f),
+            "Medium Demon" => new Color(0.3f, 0.45f, 1f),
+            "Hard Demon" => new Color(0.9f, 0.12f, 0.12f),
+            "Insane Demon" => new Color(0.72f, 0.04f, 0.38f),
+            "Extreme Demon" => new Color(0.42f, 0.02f, 0.08f),
+            _ => new Color(0.22f, 0.22f, 0.27f),
+        };
+
+        // A five-pointed star, drawn into a texture once.
+        static void Star(Rect r, Color c)
+        {
+            if (Event.current.type != EventType.Repaint) return;
+            if (starTex == null)
+            {
+                const int n = 64;
+                starTex = new Texture2D(n, n) { filterMode = FilterMode.Bilinear, hideFlags = HideFlags.HideAndDontSave };
+                var pts = new Vector2[10];
+                for (int i = 0; i < 10; i++)
+                {
+                    var a = Mathf.PI / 2 + i * Mathf.PI / 5;
+                    var rad = i % 2 == 0 ? n * 0.48f : n * 0.2f;
+                    pts[i] = new Vector2(n / 2f + Mathf.Cos(a) * rad, n / 2f + Mathf.Sin(a) * rad);
+                }
+                for (int py = 0; py < n; py++)
+                    for (int px = 0; px < n; px++)
+                    {
+                        bool inside = false;
+                        for (int i = 0, j = 9; i < 10; j = i++)
+                            if ((pts[i].y > py) != (pts[j].y > py) && px < (pts[j].x - pts[i].x) * (py - pts[i].y) / (pts[j].y - pts[i].y) + pts[i].x)
+                                inside = !inside;
+                        starTex.SetPixel(px, py, inside ? Color.white : new Color(1, 1, 1, 0));
+                    }
+                starTex.Apply();
+            }
+            var old = GUI.color; GUI.color = c;
+            GUI.DrawTexture(r, starTex);
+            GUI.color = old;
+        }
+
+        // A boss's difficulty: a colored block with its stars and name, like GD's difficulty face.
+        static void Badge(Rect r, string difficulty, bool beaten)
+        {
+            var color = DifficultyColor(difficulty);
+            Theme.Slanted(r, color, 0.08f);
+            var light = difficulty is "Easy" or "Normal" or "Hard";
+            var ink = light ? new Color(0.05f, 0.05f, 0.08f) : Color.white;
+            if (difficulty == null)
+            {
+                Theme.Title(new Rect(r.x + 12, r.y + r.height / 2 - 18, r.width - 16, 36), "UNRATED", Dim, 16);
+                return;
+            }
+            var stars = Share.StarsFor(difficulty);
+            Star(new Rect(r.x + 14, r.y + 10, 30, 30), light ? ink : Yellow);
+            Theme.Title(new Rect(r.x + 48, r.y + 4, r.width - 50, 40), stars.ToString(), ink, 30);
+            EditorGui.Text(new Rect(r.x + 10, r.yMax - (beaten ? 44 : 28), r.width - 12, 22), difficulty.ToUpperInvariant(), ink, 12);
+            if (beaten) EditorGui.Text(new Rect(r.x + 10, r.yMax - 24, r.width - 12, 20), "BEATEN", light ? new Color(0.05f, 0.35f, 0.1f) : Green, 12);
+        }
+
+        static void DrawRate(float vw)
+        {
+            var b = rating;
+            var r = Modal(vw, 900, 520);
+            float x = r.x + 30, y = r.y + 24, w = r.width - 60;
+            Theme.Title(new Rect(x, y, w, 50), "RATE '" + b.Name.ToUpperInvariant() + "'", Pink, 30);
+            EditorGui.Text(new Rect(x, y + 50, w, 24), $"by {b.Author}   ·   {b.Attacks} attacks   ·   beaten by {b.Clears}. Players who beat it get its stars, also the ones who beat it before.", Dim, 13);
+            y += 92;
+            const int cols = 5; const float bw = 160, bh = 130, gap = 8;
+            for (int i = 0; i < Share.Difficulties.Length; i++)
+            {
+                var d = Share.Difficulties[i];
+                var cell = new Rect(x + (i % cols) * (bw + gap), y + (i / cols) * (bh + gap), bw, bh);
+                var hover = cell.Contains(Event.current.mousePosition);
+                Badge(hover ? new Rect(cell.x - 3, cell.y - 3, cell.width + 6, cell.height + 6) : cell, d, false);
+                if (b.Difficulty == d) EditorGui.Outline(cell, Color.white, 3);
+                if (hover && Event.current.type == EventType.MouseDown && Event.current.button == 0)
+                {
+                    Event.current.Use();
+                    rating = null;
+                    Share.SetDifficulty(b, d, m => Say(m));
+                    return;
+                }
+            }
+            if (b.Difficulty != null && EditorGui.Button(new Rect(x, r.yMax - 70, 220, 44), "Remove rating", color: RedBtn)) { rating = null; Share.SetDifficulty(b, null, m => Say(m)); }
+            if (EditorGui.Button(new Rect(r.xMax - 210, r.yMax - 70, 180, 44), "Cancel")) rating = null;
+        }
+
+        static void DrawStars(Rect r, float x, float y, float w)
+        {
+            var e = Event.current;
+            if (!Share.Configured) { EditorGui.Text(new Rect(x, y + 40, w, 30), "Sharing isn't set up in this build, so there are no stars yet.", Dim, 15); return; }
+
+            // You.
+            var me = new Rect(x, y, 420, 150);
+            Theme.Slanted(me, new Color(0.12f, 0.1f, 0.04f), 0.05f);
+            if (Share.SignedIn)
+            {
+                Star(new Rect(me.x + 22, me.y + 26, 76, 76), Yellow);
+                Theme.Title(new Rect(me.x + 112, me.y + 14, 300, 70), Share.MyStars.ToString(), Yellow, 60);
+                var rank = Share.Leaderboard.FindIndex(p => p.Name == Share.Login);
+                EditorGui.Text(new Rect(me.x + 116, me.y + 88, 300, 24), $"{Share.MyBeaten} rated bosses beaten" + (rank >= 0 ? $"   ·   rank #{rank + 1}" : ""), Color.white, 15);
+                EditorGui.Text(new Rect(me.x + 116, me.y + 114, 300, 22), Share.Login, Dim, 13);
+            }
+            else
+            {
+                Star(new Rect(me.x + 22, me.y + 36, 60, 60), new Color(0.4f, 0.4f, 0.4f));
+                EditorGui.Text(new Rect(me.x + 100, me.y + 30, 300, 50), "Sign in with GitHub to collect stars and get on the leaderboard.", Color.white, 15, wrap: true);
+                if (EditorGui.Button(new Rect(me.x + 100, me.y + 90, 240, 36), "Sign in with GitHub", color: BlueBtn) && !Share.Busy) Share.StartLogin();
+            }
+
+            // How stars work.
+            var hx = x + 440;
+            Theme.Title(new Rect(hx, y - 4, w - 440, 34), "HOW STARS WORK", Color.white, 20);
+            EditorGui.Text(new Rect(hx, y + 30, w - 440, 44), "Beat a boss the owner rated and you get its stars. Runs with the editor or no damage on, and changed copies, don't count.", Dim, 13, wrap: true);
+            float lx = hx;
+            foreach (var d in new[] { "Easy", "Normal", "Hard", "Harder", "Insane", "Extreme Demon" })
+            {
+                Badge(new Rect(lx, y + 82, 112, 64), d, false);
+                lx += 118;
+            }
+            y += 172;
+
+            // The leaderboard.
+            Theme.Title(new Rect(x, y, w, 36), "LEADERBOARD", Pink, 24);
+            if (EditorGui.Button(new Rect(r.xMax - 30 - 128, y, 128, 34), Share.Busy ? "Loading" : "Refresh") && !Share.Busy) Share.Refresh();
+            y += 44;
+            var listRect = new Rect(x, y, w, r.yMax - y - 20);
+            if (e.type == EventType.ScrollWheel && listRect.Contains(e.mousePosition)) { starsScroll = Mathf.Max(0, starsScroll + e.delta.y * 20); e.Use(); }
+            var board = Share.Leaderboard;
+            if (board.Count == 0)
+                EditorGui.Text(new Rect(x, y + 10, w, 26), Share.Busy ? "Loading..." : "Nobody has stars yet. Beat a rated boss to be first!", Dim, 15);
+            const float h = 46;
+            float ly = listRect.y - starsScroll;
+            for (int i = 0; i < board.Count; i++, ly += h)
+            {
+                if (ly < listRect.y - 2 || ly + h > listRect.yMax + 2) continue;
+                var p = board[i];
+                var row = new Rect(x, ly, w, h - 6);
+                var mine = p.Name == Share.Login;
+                Theme.Slanted(row, mine ? new Color(0.05f, 0.2f, 0.25f) : Row, 0.04f);
+                var medal = i == 0 ? Yellow : i == 1 ? new Color(0.8f, 0.8f, 0.85f) : i == 2 ? new Color(0.85f, 0.5f, 0.25f) : Dim;
+                Theme.Title(new Rect(row.x + 16, row.y + 2, 80, 36), "#" + (i + 1), medal, 22);
+                EditorGui.Text(new Rect(row.x + 110, row.y + 9, 500, 24), p.Name, mine ? Cyan : Color.white, 17);
+                Star(new Rect(row.xMax - 290, row.y + 8, 24, 24), Yellow);
+                EditorGui.Text(new Rect(row.xMax - 258, row.y + 9, 100, 24), p.Stars.ToString(), Yellow, 17);
+                EditorGui.Text(new Rect(row.xMax - 160, row.y + 11, 150, 22), $"{p.Beaten} beaten", Dim, 13);
+            }
+            starsScroll = Mathf.Min(starsScroll, Mathf.Max(0, board.Count * h - listRect.height));
         }
 
         // ---------- upload ----------
@@ -609,7 +796,8 @@ namespace SunLoader
             }
             if (e.keyCode == KeyCode.Escape)
             {
-                if (uploading != null) uploading = null;
+                if (rating != null) rating = null;
+                else if (uploading != null) uploading = null;
                 else if (screen == Screen.New) ShowList();
                 else Toggle();
                 e.Use();
