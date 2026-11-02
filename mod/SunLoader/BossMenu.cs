@@ -77,7 +77,8 @@ namespace SunLoader
 
         // Play/Edit start a level, which only works from a menu, not in the middle of one.
         static bool CanLaunch => MainMenuSeen.OnMainMenu || PlaylistMenuSeen.OnPlaylistMenu;
-        static bool Hosting => LobbySync.InLobby && LobbySync.IsHost;
+        // Custom bosses in multiplayer are coming soon: picking one for a lobby is off until then.
+        static bool Hosting => false;
 
         public static void OnGUI(float scale, float vw)
         {
@@ -134,7 +135,7 @@ namespace SunLoader
                 y = AppealBar(x, y, w, "You're banned from suns, sharing and rating" + (string.IsNullOrEmpty(Share.MyBanReason) ? "." : ": " + Share.MyBanReason));
             else if (screen == Screen.Suns && AntiCheat.LastFlag != null)
                 y = AppealBar(x, y, w, AntiCheat.LastFlag);
-            if (screen != Screen.New && LobbySync.InLobby) y = LobbyBar(x, y, w);
+            if (Hosting && screen != Screen.New) y = LobbyBar(x, y, w);
 
             if (screen == Screen.New) DrawNew(r, x, y, w);
             else if (screen == Screen.Online) DrawOnline(r, x, y, w);

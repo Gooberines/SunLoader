@@ -163,7 +163,8 @@ namespace SunLoader
                 stage = "add checkpoints";
                 CustomBosses.EnsureCheckpoints(customPath, id);
                 var replaced = false;
-                if (File.Exists(customPath))
+                // Online, everyone plays the same attacks: a player's own level replacement stays off.
+                if (File.Exists(customPath) && (bossPath != null || !LobbySync.InLobby))
                 {
                     stage = "load custom boss";
                     var count = BossFile.Import(song, JsonNode.Parse(File.ReadAllText(customPath)));

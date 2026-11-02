@@ -63,7 +63,7 @@ namespace SunLoader
                 BossPath = bossPath;
                 Load();
             }
-            else if (Dirty)
+            else if (Dirty && !LobbySync.InLobby)
             {
                 // The level restarted (death, retry) and loaded the file from disk; put the
                 // unsaved edits back so what's playing matches the editor.

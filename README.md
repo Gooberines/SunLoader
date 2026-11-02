@@ -15,8 +15,7 @@ A mod loader and in-game boss editor for **Just Shapes & Beats** (Steam, Windows
   1 to 20 suns, and the sun count sets the difficulty, from Easy to Extreme Demon. Beating a rated boss earns its suns,
   and the **Suns** tab has your sun counter and a leaderboard. The game's own levels are rated too (**Suns → Game
   levels**): beat them from the Playlist to earn their suns.
-- **Custom bosses in online multiplayer:** the lobby host picks one of their bosses, and everyone in the lobby with Sun
-  Loader plays it when its stage comes up. The boss is sent through the Steam lobby; nobody has to download it.
+- **Custom bosses in online multiplayer:** coming soon.
 - **Boss editor:** press **F1** in any level to place attacks on the game screen, set their timing and settings,
   preview them live, and save your own boss over that level.
 - **Mod menu:** a **MODS** button on the main menu (or **F2** anywhere) lists DLL mods, loads them on the spot or at
@@ -70,13 +69,11 @@ To install by hand instead:
 - **Before online multiplayer**, a warning says that using No Damage or the Boss Editor online will get you banned. It
   shows once each time the game runs, and going online waits until you accept.
 - **Fair play:** a beaten run earns nothing if another mod is loaded or changes getting hit, Assist Mode is on, the song
-  skipped ahead, or it finished faster than the song. The boss editor and No Damage are off in online lobbies. A boss
+  skipped ahead, or it finished faster than the song. The boss editor, No Damage and level replacements are off in online lobbies. A boss
   changed after it was rated earns nothing until it's rated again, and clear comments that were edited don't count. A
   failed check only stops that run counting. The repository owner bans players (**Suns** tab), and bans can be appealed
   on the Discord server. These checks run on the player's PC, so they stop casual cheating, not someone who rebuilds
   the mod.
-- **Multiplayer:** in an online lobby, the host's boss list shows **Use in lobby**. Players need Sun Loader to see the
-  custom boss (others get the normal level), and a custom song only plays for players who have the same song file.
 - **Level replacements** (F1 in a normal level) are saved to `BepInEx\SunLoader\<level name>.json`. That level plays
   your boss from then on.
 - **Songs** go in `BepInEx\SunLoader\music`.
