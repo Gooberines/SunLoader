@@ -22,6 +22,8 @@ namespace SunLoader
             catch (Exception e) { Plugin.Logger.LogError("Mod menu: " + e); ModMenu.Open = false; }
             try { EditorGui.TryBiggerFont(); BossMenu.OnGUI(EditorGui.Scale, EditorGui.VW); }
             catch (Exception e) { Plugin.Logger.LogError("Bosses menu: " + e); BossMenu.Open = false; }
+            try { EditorGui.TryBiggerFont(); MultiplayerWarning.OnGUI(EditorGui.Scale, EditorGui.VW); }
+            catch (Exception e) { Plugin.Logger.LogError("Multiplayer warning: " + e); MultiplayerWarning.Open = false; }
         }
     }
 
@@ -100,6 +102,7 @@ namespace SunLoader
                 if (Input.GetKeyDown(Plugin.BossMenuKey.Value)) BossMenu.Toggle();
                 CustomBosses.Update();
                 LobbySync.Update();
+                MultiplayerWarning.Update();
                 Share.Update();
                 if (open || NoDamage.On) LevelRun.Tainted = true;
                 NoDamage.On = (noDamageToggle || preview != null) && EditorSession.InLevel;

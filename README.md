@@ -67,6 +67,8 @@ To install by hand instead:
 - **Game levels** each have a `[Level] NAME` issue in the bosses repository, made by the owner, with a `suns: N`
   label. Beating one from the Playlist posts a clear there, unless its attacks were replaced or the editor or
   no-damage mode was used.
+- **Before online multiplayer**, a warning says that using No Damage or the Boss Editor online will get you banned. It
+  shows once each time the game runs, and going online waits until you accept.
 - **Multiplayer:** in an online lobby, the host's boss list shows **Use in lobby**. Players need Sun Loader to see the
   custom boss (others get the normal level), and a custom song only plays for players who have the same song file.
 - **Level replacements** (F1 in a normal level) are saved to `BepInEx\SunLoader\<level name>.json`. That level plays
