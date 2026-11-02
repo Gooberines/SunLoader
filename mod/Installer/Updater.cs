@@ -52,7 +52,8 @@ namespace SunLoaderInstaller
 
                 var dir = Path.Combine(Path.GetTempPath(), "SunLoaderUpdate", Guid.NewGuid().ToString("N"));
                 Directory.CreateDirectory(dir);
-                var assets = latest.TryGetValue("assets", out var a) && a is object[] arr ? arr.OfType<Dictionary<string, object>>() : Enumerable.Empty<Dictionary<string, object>>();
+                // The serializer gives nested arrays as an ArrayList, so don't assume an array type.
+                var assets = latest.TryGetValue("assets", out var a) && a is System.Collections.IEnumerable list ? list.OfType<Dictionary<string, object>>() : Enumerable.Empty<Dictionary<string, object>>();
                 foreach (var asset in assets)
                 {
                     var name = asset["name"] as string;
