@@ -18,11 +18,11 @@ namespace SunLoader
         public int Number;              // the GitHub issue that holds it
         public string Name, Author, Stage, Music, Description, Url, Data;
         public int Attacks, Likes, Dislikes, Comments;
-        public string Difficulty;       // set by the repository owner (a label), or null if unrated
+        public int Suns;                // 1-20, set by the repository owner (a label); 0 = unrated
+        public string Difficulty => Share.DifficultyFor(Suns);
         public List<string> Labels = new();
         public int Clears;              // players who beat it
         public bool ClearedByMe;
-        public int Stars => Share.StarsFor(Difficulty);
         public DateTime Created;
         public int Score => Likes - Dislikes;
     }
@@ -62,28 +62,40 @@ namespace SunLoader
         // Your rating per boss, as far as this session knows: +1, -1 or 0.
         public static readonly Dictionary<int, int> MyVotes = new();
 
-        // ---------- difficulty, stars and the leaderboard ----------
-        // Like Geometry Dash: the repository owner rates a boss with a difficulty, stored as an
+        // ---------- suns, difficulty and the leaderboard ----------
+        // Like Geometry Dash's stars: the repository owner rates a boss 1-20 suns, stored as an
         // issue label (only the owner and collaborators can set labels, so ratings can't be faked).
-        // Beating a rated boss earns its stars; each clear is a comment on the boss's issue.
+        // The sun count decides the difficulty. Beating a rated boss earns its suns; each clear
+        // is a comment on the boss's issue.
 
+        public const int MaxSuns = 20;
         public static readonly string[] Difficulties =
             { "Easy", "Normal", "Hard", "Harder", "Insane", "Easy Demon", "Medium Demon", "Hard Demon", "Insane Demon", "Extreme Demon" };
-        const string LabelPrefix = "difficulty: ";
+        const string LabelPrefix = "suns: ";
         const string ClearMarker = "<!-- sunloader-clear v1 -->";
 
-        public static int StarsFor(string difficulty) => difficulty switch
+        // 1-2 Easy, 3 Normal, 4-5 Hard, 6-7 Harder, 8-9 Insane, then two suns per demon tier
+        // (10-11 Easy Demon ... 16-17 Insane Demon) and 18-20 Extreme Demon.
+        public static string DifficultyFor(int suns) => suns switch
         {
-            "Easy" => 2, "Normal" => 3, "Hard" => 4, "Harder" => 6, "Insane" => 8,
-            null => 0,
-            _ => difficulty.EndsWith("Demon") ? 10 : 0,
+            <= 0 => null,
+            <= 2 => "Easy",
+            3 => "Normal",
+            <= 5 => "Hard",
+            <= 7 => "Harder",
+            <= 9 => "Insane",
+            <= 11 => "Easy Demon",
+            <= 13 => "Medium Demon",
+            <= 15 => "Hard Demon",
+            <= 17 => "Insane Demon",
+            _ => "Extreme Demon",
         };
 
         public static bool IsOwner => Login != null && string.Equals(Repo.Split('/')[0], Login, StringComparison.OrdinalIgnoreCase);
 
-        public class Player { public string Name; public int Stars, Beaten; }
+        public class Player { public string Name; public int Suns, Beaten; }
         public static volatile List<Player> Leaderboard = new();
-        public static int MyStars => Leaderboard.FirstOrDefault(p => p.Name == Login)?.Stars ?? 0;
+        public static int MySuns => Leaderboard.FirstOrDefault(p => p.Name == Login)?.Suns ?? 0;
         public static int MyBeaten => Leaderboard.FirstOrDefault(p => p.Name == Login)?.Beaten ?? 0;
 
         static readonly HttpClient http = MakeClient();
@@ -165,7 +177,8 @@ namespace SunLoader
             var body = (string)issue["body"] ?? "";
             if (!title.StartsWith(TitlePrefix) || !body.Contains(Marker)) return null;
             var labels = issue["labels"]?.AsArray().Select(l => (string)l?["name"]).Where(n => n != null).ToList() ?? new List<string>();
-            var difficulty = labels.Where(n => n.StartsWith(LabelPrefix)).Select(n => n[LabelPrefix.Length..]).FirstOrDefault(d => Difficulties.Contains(d));
+            var suns = labels.Where(n => n.StartsWith(LabelPrefix)).Select(n => int.TryParse(n[LabelPrefix.Length..], out var v) ? v : 0)
+                .FirstOrDefault(v => v >= 1 && v <= MaxSuns);
             var data = Between(body, "```sunloader\n", "\n```")?.Trim();
             if (data == null) return null;
             string Field(string label) => Between(body, $"**{label}:** ", "\n")?.Trim();
@@ -173,7 +186,7 @@ namespace SunLoader
             return new SharedBoss
             {
                 Number = (int)issue["number"],
-                Difficulty = difficulty,
+                Suns = suns,
                 Labels = labels,
                 Name = title[TitlePrefix.Length..].Trim(),
                 Author = (string)issue["user"]?["login"],
@@ -303,21 +316,21 @@ namespace SunLoader
         // A fingerprint of a boss file's attacks, to tell whether a downloaded boss was changed.
         public static string AttacksHash(JsonNode file) => Hash(file["layers"]?.ToJsonString() ?? "");
 
-        // Owner only: rates a boss (null takes the rating away). Other labels stay.
-        public static void SetDifficulty(SharedBoss b, string difficulty, Action<string> done)
+        // Owner only: rates a boss 1-20 suns (0 takes the rating away). Other labels stay.
+        public static void SetSuns(SharedBoss b, int suns, Action<string> done)
         {
             if (!IsOwner) { Error = "Only the owner of " + Repo + " can rate bosses."; return; }
             Run("Rating " + b.Name, async () =>
             {
-                var labels = b.Labels.Where(l => !l.StartsWith(LabelPrefix)).ToList();
-                if (difficulty != null) labels.Add(LabelPrefix + difficulty);
+                var labels = b.Labels.Where(l => !l.StartsWith(LabelPrefix) && !l.StartsWith("difficulty: ")).ToList();
+                if (suns > 0) labels.Add(LabelPrefix + suns);
                 var arr = new JsonArray();
                 foreach (var l in labels) arr.Add(l);
                 await Api(HttpMethod.Put, $"https://api.github.com/repos/{Repo}/issues/{b.Number}/labels", new JsonObject { ["labels"] = arr });
                 b.Labels = labels;
-                b.Difficulty = difficulty;
+                b.Suns = suns;
                 RebuildLeaderboard(Bosses, clearsByBoss);
-                done?.Invoke(difficulty == null ? $"'{b.Name}' is unrated now" : $"Rated '{b.Name}' {difficulty} ({StarsFor(difficulty)} stars)");
+                done?.Invoke(suns == 0 ? $"'{b.Name}' is unrated now" : $"Rated '{b.Name}' {suns} suns ({DifficultyFor(suns)})");
             });
         }
 
@@ -353,15 +366,15 @@ namespace SunLoader
                 byBoss.TryGetValue(b.Number, out var who);
                 b.Clears = who?.Count ?? 0;
                 b.ClearedByMe = Login != null && who != null && who.Contains(Login);
-                if (who == null || b.Stars == 0) continue;
+                if (who == null || b.Suns == 0) continue;
                 foreach (var name in who)
                 {
                     if (!players.TryGetValue(name, out var p)) players[name] = p = new Player { Name = name };
-                    p.Stars += b.Stars;
+                    p.Suns += b.Suns;
                     p.Beaten++;
                 }
             }
-            Leaderboard = players.Values.OrderByDescending(p => p.Stars).ThenByDescending(p => p.Beaten).ThenBy(p => p.Name).ToList();
+            Leaderboard = players.Values.OrderByDescending(p => p.Suns).ThenByDescending(p => p.Beaten).ThenBy(p => p.Name).ToList();
         }
 
         // ---------- clears ----------

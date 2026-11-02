@@ -46,10 +46,10 @@ player gets it. (To test before rebuilding, put it in `Sharing.GitHubAppClientId
   stops them opening issues in your repositories.
 - **Lock comments** on an issue if a thread gets out of hand.
 - **Rate bosses:** signed in to the game as the repository owner, the Online tab shows **Rate** on every boss.
-  It sets one of the `difficulty: …` labels (Easy, Normal, Hard, Harder, Insane, Easy/Medium/Hard/Insane/Extreme
-  Demon). You can also add or change the label on GitHub; the game reads it either way.
-- **Stars:** a clear is a comment containing `<!-- sunloader-clear v1 -->`. The game only posts one after a fair run,
-  but anyone could type one by hand, so delete clear comments that look fake and their stars go away.
+  It sets one of the `suns: 1` ... `suns: 20` labels, and the sun count picks the difficulty (1-2 Easy up to 18-20
+  Extreme Demon). You can also set the label on GitHub; the game reads it either way.
+- **Suns:** a clear is a comment containing `<!-- sunloader-clear v1 -->`. The game only posts one after a fair run,
+  but anyone could type one by hand, so delete clear comments that look fake and their suns go away.
 
 Bosses are attack data only (attack names, times, positions and settings). Sun Loader
 never runs code from a downloaded boss, caps its size, and only accepts a song *file name*
