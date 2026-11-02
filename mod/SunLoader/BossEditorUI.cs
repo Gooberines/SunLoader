@@ -22,6 +22,8 @@ namespace SunLoader
             catch (Exception e) { Plugin.Logger.LogError("Mod menu: " + e); ModMenu.Open = false; }
             try { EditorGui.TryBiggerFont(); BossMenu.OnGUI(EditorGui.Scale, EditorGui.VW); }
             catch (Exception e) { Plugin.Logger.LogError("Bosses menu: " + e); BossMenu.Open = false; }
+            try { EditorGui.TryBiggerFont(); BossMultiplayerMenu.OnGUI(EditorGui.Scale, EditorGui.VW); }
+            catch (Exception e) { Plugin.Logger.LogError("Boss multiplayer menu: " + e); BossMultiplayerMenu.Open = false; }
             try { EditorGui.TryBiggerFont(); MultiplayerWarning.OnGUI(EditorGui.Scale, EditorGui.VW); }
             catch (Exception e) { Plugin.Logger.LogError("Multiplayer warning: " + e); MultiplayerWarning.Open = false; }
         }
@@ -100,8 +102,10 @@ namespace SunLoader
                 ModLoader.Update();
                 if (Input.GetKeyDown(Plugin.ModMenuKey.Value)) ModMenu.Toggle();
                 if (Input.GetKeyDown(Plugin.BossMenuKey.Value)) BossMenu.Toggle();
+                if (Input.GetKeyDown(Plugin.BossMultiplayerKey.Value)) BossMultiplayerMenu.Toggle();
                 CustomBosses.Update();
                 LobbySync.Update();
+                BossMultiplayerMenu.Update();
                 MultiplayerWarning.Update();
                 Share.Update();
                 if (open || NoDamage.On) LevelRun.Tainted = true;

@@ -39,6 +39,7 @@ namespace SunLoader
             openedAt = Time.realtimeSinceStartup;
             ModMenu.Open = false;
             BossMenu.Open = false;
+            BossMultiplayerMenu.Open = false;
         }
 
         // The menu keeps running underneath, so it stops taking input while this is up.

@@ -185,7 +185,7 @@ namespace SunLoader
         public static void Toggle()
         {
             Open = !Open;
-            if (Open) { mods = ModLoader.Scan(); scroll = 0; BossMenu.Open = false; }
+            if (Open) { mods = ModLoader.Scan(); scroll = 0; BossMenu.Open = false; BossMultiplayerMenu.Open = false; }
         }
 
         static void Say(string msg) { message = msg; messageUntil = Time.realtimeSinceStartup + 6; }

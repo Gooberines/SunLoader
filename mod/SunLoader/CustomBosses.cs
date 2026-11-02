@@ -218,6 +218,7 @@ namespace SunLoader
         public static string Launch(BossProject b, bool edit)
         {
             if (b.Error != null) return b.Error;
+            if (LobbySync.InLobby) return "Leave the online lobby first to play or edit a boss by yourself.";
             var stage = Stage(b.Stage);
             if (stage == null || !SafeRead.IsObjectOf<ModelStoryCheckpoint>(stage.Checkpoint))
                 return $"The stage '{b.Stage}' isn't in this version of the game";
@@ -309,6 +310,7 @@ namespace SunLoader
         // The game says the last checkpoint was cleared: the boss is beaten.
         public static void OnBeaten(LogicArcadeEndLevel end)
         {
+            if (LevelRun.Online || LobbySync.InLobby) { Plugin.Logger.LogInfo("Bosses: beaten in an online lobby; online runs don't earn suns"); return; }
             var b = Active;
             if (b == null) { OnLevelBeaten(end); return; }
             Plugin.Logger.LogInfo($"Bosses: beat '{b.Name}'" + (LevelRun.Tainted ? " (with the editor or no damage)" : ""));
@@ -416,8 +418,9 @@ namespace SunLoader
         public static string Id;
         public static bool Modified;   // its attacks were replaced (a level replacement, a boss, a lobby boss)
         public static bool Tainted;    // the editor or no-damage mode was used since the last menu
+        public static bool Online;     // it started in an online lobby, so it never earns suns
 
-        public static void Started(string id, bool modified) { Id = id; Modified = modified; }
+        public static void Started(string id, bool modified) { Id = id; Modified = modified; Online = LobbySync.InLobby; }
     }
 
     // A playlist run ends by clearing the level's last checkpoint.

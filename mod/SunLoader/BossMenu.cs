@@ -41,6 +41,7 @@ namespace SunLoader
             Open = !Open;
             if (!Open) { focus = null; return; }
             ModMenu.Open = false;
+            BossMultiplayerMenu.Open = false;
             ShowList();
         }
 
@@ -77,7 +78,6 @@ namespace SunLoader
 
         // Play/Edit start a level, which only works from a menu, not in the middle of one.
         static bool CanLaunch => MainMenuSeen.OnMainMenu || PlaylistMenuSeen.OnPlaylistMenu;
-        static bool Hosting => LobbySync.InLobby && LobbySync.IsHost;
 
         public static void OnGUI(float scale, float vw)
         {
@@ -229,17 +229,8 @@ namespace SunLoader
             EditorGui.Fill(new Rect(bar.x, bar.y, 6, bar.height), Cyan);
             Theme.Title(new Rect(x + 20, y + 6, 220, 36), "ONLINE LOBBY", Cyan, 20);
             var boss = LobbySync.Boss;
-            string text = LobbySync.IsHost
-                ? boss != null ? $"Lobby boss: '{boss.Name}'. It plays when {boss.Stage} comes up. Everyone needs Sun Loader to see it."
-                               : "You're the host. Press 'Use in lobby' on one of your bosses to play it with everyone."
-                : boss != null ? $"The host picked '{boss.Name}'. It plays when {boss.Stage} comes up."
-                               : "The host hasn't picked a custom boss.";
-            EditorGui.Text(new Rect(x + 210, y + 13, w - 400, 26), text, Color.white, 14);
-            if (LobbySync.IsHost && boss != null && EditorGui.Button(new Rect(bar.xMax - 170, y + 8, 160, 34), "Stop", "Go back to the stages' normal attacks for everyone"))
-            {
-                LobbySync.Stop();
-                Say("The lobby plays the normal levels again");
-            }
+            EditorGui.Text(new Rect(x + 210, y + 13, w - 500, 26), boss != null ? $"This room's boss: '{boss.Name}'." : "This room has no custom boss.", Color.white, 14);
+            if (EditorGui.Button(new Rect(bar.xMax - 270, y + 8, 260, 34), "Boss Multiplayer menu", "Manage the room's boss")) BossMultiplayerMenu.Toggle();
             return y + 62;
         }
 
@@ -317,12 +308,7 @@ namespace SunLoader
 
             float bx = row.xMax - 576, by2 = row.y + 8;
             var usable = b.Error == null;
-            if (Hosting)
-            {
-                if (EditorGui.Button(new Rect(bx, by2, 136, 36), isLobbyBoss ? "In lobby" : "Use in lobby", "Play this boss with everyone in your online lobby", on: isLobbyBoss, color: usable ? GreenBtn : RowHover))
-                    UseInLobby(b);
-            }
-            else if (EditorGui.Button(new Rect(bx, by2, 136, 36), "Play", "Play this boss", color: CanLaunch && usable ? Pink : RowHover)) Launch(b, false);
+            if (EditorGui.Button(new Rect(bx, by2, 136, 36), "Play", "Play this boss", color: CanLaunch && usable ? Pink : RowHover)) Launch(b, false);
             if (EditorGui.Button(new Rect(bx + 142, by2, 136, 36), "Edit", "Start this boss with the editor open", color: CanLaunch && usable ? BlueBtn : RowHover)) Launch(b, true);
             if (EditorGui.Button(new Rect(bx + 284, by2, 270, 36), "Song: " + (b.Music ?? "stage's own"), "Change this boss's song. Add .wav files to the music folder.")) CycleMusic(b);
             by2 += 42;
@@ -346,15 +332,6 @@ namespace SunLoader
             var err = CustomBosses.Launch(b, edit);
             if (err != null) { Say(err, true); return; }
             Open = false; focus = null;
-        }
-
-        static void UseInLobby(BossProject b)
-        {
-            if (b.Error != null) { Say(b.Error, true); return; }
-            string err;
-            try { err = LobbySync.Use(b); } catch (Exception e) { err = e.Message; }
-            if (err != null) Say(err, true);
-            else Say($"'{b.Name}' is the lobby's boss. Pick {b.Stage} in the lobby to play it." + (b.Music != null ? " Players without the same song file hear the stage's song." : ""));
         }
 
         static void CycleMusic(BossProject b)
@@ -466,10 +443,6 @@ namespace SunLoader
             if (local == null)
             {
                 if (EditorGui.Button(new Rect(bx, row.y + 8, 190, 36), "Download", "Add it to My bosses", color: Pink)) Download(b);
-            }
-            else if (Hosting)
-            {
-                if (EditorGui.Button(new Rect(bx, row.y + 8, 190, 36), "Use in lobby", color: GreenBtn)) UseInLobby(local);
             }
             else if (EditorGui.Button(new Rect(bx, row.y + 8, 190, 36), "Play", "You have it: play it now", color: CanLaunch ? Pink : RowHover)) Launch(local, false);
             if (EditorGui.Button(new Rect(bx + 196, row.y + 8, 170, 36), $"Comments ({b.Comments})", "Open its page on GitHub to read and leave comments")) OpenUrl(b.Url);

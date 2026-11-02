@@ -25,6 +25,7 @@ namespace SunLoader
         internal static BepInEx.Configuration.ConfigEntry<UnityEngine.KeyCode> EditorKey;
         internal static BepInEx.Configuration.ConfigEntry<UnityEngine.KeyCode> ModMenuKey;
         internal static BepInEx.Configuration.ConfigEntry<UnityEngine.KeyCode> BossMenuKey;
+        internal static BepInEx.Configuration.ConfigEntry<UnityEngine.KeyCode> BossMultiplayerKey;
         internal static BepInEx.Configuration.ConfigEntry<string> ShareRepo, ShareClientId, ShareDiscord;
         internal static BepInEx.Configuration.ConfigEntry<bool> LobbyBosses;
         internal static BepInEx.Configuration.ConfigEntry<string> UiFont;
@@ -41,6 +42,7 @@ namespace SunLoader
             EditorKey = Config.Bind("Editor", "ToggleKey", UnityEngine.KeyCode.F1, "Opens and closes the in-game boss editor during a level.");
             ModMenuKey = Config.Bind("Mod menu", "ToggleKey", UnityEngine.KeyCode.F2, "Opens the mod menu from anywhere (it also has a MODS button on the main menu).");
             BossMenuKey = Config.Bind("Bosses", "ToggleKey", UnityEngine.KeyCode.F4, "Opens the Bosses menu, where you make and play your own bosses (it also has a BOSSES button on the main menu).");
+            BossMultiplayerKey = Config.Bind("Bosses", "MultiplayerKey", UnityEngine.KeyCode.F5, "Opens the Boss Multiplayer menu, for playing custom bosses with other people (it also has a MULTIPLAYER button on the main menu).");
             ShareRepo = Config.Bind("Sharing", "Repository", "Gooberines/SunLoader-Bosses",
                 "The public GitHub repository (owner/name) that holds shared bosses. Each shared boss is an issue there.");
             ShareClientId = Config.Bind("Sharing", "GitHubAppClientId", "",
@@ -163,7 +165,8 @@ namespace SunLoader
                 stage = "add checkpoints";
                 CustomBosses.EnsureCheckpoints(customPath, id);
                 var replaced = false;
-                if (File.Exists(customPath))
+                // Online, everyone plays the same attacks: only the lobby's boss replaces a level.
+                if (File.Exists(customPath) && (bossPath != null || !LobbySync.InLobby))
                 {
                     stage = "load custom boss";
                     var count = BossFile.Import(song, JsonNode.Parse(File.ReadAllText(customPath)));
