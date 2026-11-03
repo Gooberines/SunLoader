@@ -78,13 +78,12 @@ namespace SunLoader
 
         // Play/Edit start a level, which only works from a menu, not in the middle of one.
         static bool CanLaunch => MainMenuSeen.OnMainMenu || PlaylistMenuSeen.OnPlaylistMenu;
-
         public static void OnGUI(float scale, float vw)
         {
             var e = Event.current;
             GUI.matrix = Matrix4x4.Scale(new Vector3(scale, scale, 1));
 
-            if (!Open && !ModMenu.Open && MainMenuSeen.OnMainMenu) MainMenuButton(e);
+            if (!Open && !ModMenu.Open && !BossMultiplayerMenu.Open && !MultiplayerWarning.Open && MainMenuSeen.OnMainMenu) MainMenuButton(e);
             if (!Open) return;
             if (e.type == EventType.KeyDown && Keys(e)) return;
 
@@ -134,7 +133,7 @@ namespace SunLoader
                 y = AppealBar(x, y, w, "You're banned from suns, sharing and rating" + (string.IsNullOrEmpty(Share.MyBanReason) ? "." : ": " + Share.MyBanReason));
             else if (screen == Screen.Suns && AntiCheat.LastFlag != null)
                 y = AppealBar(x, y, w, AntiCheat.LastFlag);
-            if (screen != Screen.New && LobbySync.InLobby) y = LobbyBar(x, y, w);
+            if (LobbySync.InLobby && screen != Screen.New) y = LobbyBar(x, y, w);
 
             if (screen == Screen.New) DrawNew(r, x, y, w);
             else if (screen == Screen.Online) DrawOnline(r, x, y, w);

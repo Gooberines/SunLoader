@@ -16,7 +16,7 @@ A mod loader and in-game boss editor for **Just Shapes & Beats** (Steam, Windows
   and the **Suns** tab has your sun counter and a leaderboard. The game's own levels are rated too (**Suns → Game
   levels**): beat them from the Playlist to earn their suns.
 - **Boss Multiplayer menu:** a **MULTIPLAYER** button on the main menu (or **F5**) to play custom bosses with other
-  people. The host picks a boss, opens a room through Challenge, and everyone in the room with Sun Loader plays it. It's
+  people. The host picks a boss, opens a Friends or Community room through Challenge, and everyone in the room with Sun Loader plays it. It's
   sent through the Steam lobby, so nobody has to download it. Online runs don't earn suns.
 - **Boss editor:** press **F1** in any level to place attacks on the game screen, set their timing and settings,
   preview them live, and save your own boss over that level.
@@ -72,16 +72,16 @@ To install by hand instead:
 - **Before online multiplayer**, a warning says that using No Damage or the Boss Editor online will get you banned. It
   shows once each time the game runs, and going online waits until you accept.
 - **Fair play:** a beaten run earns nothing if another mod is loaded or changes getting hit, Assist Mode is on, the song
-  skipped ahead, or it finished faster than the song. The boss editor and No Damage are off in online lobbies. A boss
+  skipped ahead, or it finished faster than the song. The boss editor, No Damage and level replacements are off in online lobbies. A boss
   changed after it was rated earns nothing until it's rated again, and clear comments that were edited don't count. A
   failed check only stops that run counting. The repository owner bans players (**Suns** tab), and bans can be appealed
   on the Discord server. These checks run on the player's PC, so they stop casual cheating, not someone who rebuilds
   the mod.
-- **Multiplayer:** in the Boss Multiplayer menu, pick a boss, press **Go to Challenge** and open a Friends or Online room;
+- **Multiplayer:** in the Boss Multiplayer menu, pick a boss, press **Go to Challenge** and open a Friends or Community room;
   the boss is sent when the room opens. In a room, **F5** shows the players, changes the boss, and sets whether every
   round plays it or players can vote for another song (it appears under the stage's name). Players need Sun Loader to see
   the custom boss (others get the normal level), and a custom song only plays for players who have the same song file.
-  Nothing beaten online earns suns, and level replacements are ignored online so everyone plays the same attacks.
+  This needs a key from the owner, entered once in that menu; without one you get the normal levels. Public rooms stay on the normal levels. Nothing beaten online earns suns, and level replacements are ignored online so everyone plays the same attacks.
 - **Level replacements** (F1 in a normal level) are saved to `BepInEx\SunLoader\<level name>.json`. That level plays
   your boss from then on.
 - **Songs** go in `BepInEx\SunLoader\music`.
@@ -141,6 +141,7 @@ The files in `mod/SunLoader`:
 | `BossMenu.cs` | The Bosses menu UI (My bosses, Online, Suns) |
 | `BossMultiplayerMenu.cs` | The Boss Multiplayer menu UI |
 | `Share.cs` | Sharing and rating through GitHub, and the GitHub login |
+| `MultiplayerKeys.cs` | Checks a multiplayer key against the hashes in `MultiplayerKeyHashes.cs` (made by `tools/MakeKeys.ps1`) |
 | `LobbySync.cs` | Sending the host's boss to everyone in an online lobby |
 | `AttackInfo.cs` | Attack categories, descriptions, editor shapes |
 | `Music.cs` | Custom songs (WAV decoding) and no-damage mode |

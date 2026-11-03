@@ -49,6 +49,7 @@ namespace SunLoader
         static bool open, playing, showHelp, helpShownOnce, noDamageToggle;
         static float playhead;
         static string tool = "Beam", search = "", status = "", tip, hoverType;
+        static AttackInfo.Preset toolShape;     // the shape picked from the Shapes list, if tool came from there
         static float statusUntil;
         static int snapIndex = 2, paletteScroll;
         static float zoom = 0.1f, scrollMs = -500, rowScroll;
@@ -290,6 +291,7 @@ namespace SunLoader
         {
             var t = EditorSession.TypeInfo(type);
             var s = new EditSpawn { Type = type, Time = Mathf.Max(0, Mathf.Round(time)), Warning = t?.WarningDefault ?? 0 };
+            if (toolShape?.Type == type) foreach (var (key, value) in toolShape.Params) s.Params[key] = value;
             if (t == null || t.UsesPosition) { s.X = Mathf.Round(x ?? GameW / 2); s.Y = Mathf.Round(y ?? GameH / 2); }
             return s;
         }
@@ -670,15 +672,22 @@ namespace SunLoader
             if (search.Length == 0 && focus != "search") Text(new Rect(r.x + 14, r.y + 11, r.width - 20, 22), "Search attacks...", Dim);
 
             // Flatten categories and attacks into rows; a null type is a category header.
-            var items = new List<(string header, AttackType type)>();
+            var items = new List<(string header, AttackType type, AttackInfo.Preset shape)>();
+            var shapes = AttackInfo.Shapes.Where(p => EditorSession.TypeInfo(p.Type) != null && (search.Length == 0 || p.Name.IndexOf(search, StringComparison.OrdinalIgnoreCase) >= 0)).ToList();
+            if (shapes.Count > 0)
+            {
+                items.Add((AttackInfo.ShapesCategory, null, null));
+                if (search.Length > 0 || !collapsed.Contains(AttackInfo.ShapesCategory))
+                    items.AddRange(shapes.Select(p => ((string)null, EditorSession.TypeInfo(p.Type), p)));
+            }
             foreach (var cat in AttackInfo.Categories)
             {
                 var inCat = EditorSession.Types.Where(t => AttackInfo.Get(t.Type).Category == cat)
                     .Where(t => search.Length == 0 || t.Type.IndexOf(search, StringComparison.OrdinalIgnoreCase) >= 0 || AttackInfo.Friendly(t.Type).IndexOf(search, StringComparison.OrdinalIgnoreCase) >= 0)
                     .OrderBy(t => AttackInfo.Friendly(t.Type)).ToList();
                 if (inCat.Count == 0) continue;
-                items.Add((cat, null));
-                if (search.Length > 0 || !collapsed.Contains(cat)) items.AddRange(inCat.Select(t => ((string)null, t)));
+                items.Add((cat, null, null));
+                if (search.Length > 0 || !collapsed.Contains(cat)) items.AddRange(inCat.Select(t => ((string)null, t, (AttackInfo.Preset)null)));
             }
 
             float y = r.y + 44, rowH = 26;
@@ -687,7 +696,7 @@ namespace SunLoader
             for (int i = paletteScroll; i < items.Count && i < paletteScroll + visible; i++, y += rowH)
             {
                 var row = new Rect(r.x + 6, y, r.width - 12, rowH - 3);
-                var (header, type) = items[i];
+                var (header, type, shape) = items[i];
                 if (header != null)
                 {
                     var isOpen = search.Length > 0 || !collapsed.Contains(header);
@@ -697,14 +706,20 @@ namespace SunLoader
                 }
                 var risky = AttackInfo.IsRisky(type.Type);
                 if (row.Contains(Event.current.mousePosition)) hoverType = type.Type;
-                var label = "   " + AttackInfo.Friendly(type.Type) + (risky ? "  (!)" : "");
-                if (Button(row, label, null, type.Type == tool, risky ? new Color(0.25f, 0.17f, 0.12f) : null))
+                var label = "   " + (shape?.Name ?? AttackInfo.Friendly(type.Type)) + (risky ? "  (!)" : "");
+                if (Button(row, label, null, type.Type == tool && toolShape == shape, risky ? new Color(0.25f, 0.17f, 0.12f) : null))
                 {
                     tool = type.Type;
+                    toolShape = shape;
                     if (selected.Count > 0 && Event.current.shift)   // shift-click changes the selected attacks' type
                     {
                         Snapshot();
-                        foreach (var s in selected) { s.Type = tool; s.Params.Clear(); }
+                        foreach (var s in selected)
+                        {
+                            s.Type = tool;
+                            s.Params.Clear();
+                            if (shape != null) foreach (var (key, value) in shape.Params) s.Params[key] = value;
+                        }
                         Changed();
                     }
                 }
@@ -873,7 +888,7 @@ namespace SunLoader
 
         // ---------- shapes: rough drawings of attacks on the game screen ----------
 
-        static Texture2D circleTex, ringTex, triTex, starTex;
+        static Texture2D circleTex, ringTex, triTex, starTex, diamondTex, plusTex, hexTex;
         static bool shapesTried;
 
         static void MakeShapes()
@@ -890,6 +905,9 @@ namespace SunLoader
                     var a = Math.Atan2(dy, dx); var d = Math.Sqrt(dx * dx + dy * dy);
                     return d <= 0.55 + 0.4 * Math.Max(0, Math.Cos(a * 8));
                 });
+                diamondTex = MakeTex((dx, dy) => Math.Abs(dx) + Math.Abs(dy) <= 0.95f);
+                plusTex = MakeTex((dx, dy) => (Math.Abs(dx) <= 0.28f && Math.Abs(dy) <= 0.95f) || (Math.Abs(dy) <= 0.28f && Math.Abs(dx) <= 0.95f));
+                hexTex = MakeTex((dx, dy) => Math.Abs(dy) <= 0.82f && Math.Abs(dx) + Math.Abs(dy) * 0.58f <= 0.95f);
             }
             catch (Exception e) { Plugin.Logger.LogInfo("Editor: drawing simple shapes only (" + e.Message + ")"); }
         }
@@ -961,6 +979,9 @@ namespace SunLoader
                 case Shape.Ring: Tex(Centered(p, Mathf.Max(40, size * 1.5f)), ringTex ?? Texture2D.whiteTexture, c); break;
                 case Shape.Spikes: Rotated(Centered(p, Mathf.Clamp(size * 1.2f, 30, 260)), angle, starTex, c); break;
                 case Shape.Triangle: Rotated(Centered(p, Mathf.Clamp(size, 30, 160)), float.IsNaN(dir) ? angle : dir, triTex, c); break;
+                case Shape.Diamond: Rotated(Centered(p, Mathf.Clamp(size * 1.2f, 30, 260)), angle, diamondTex, c); break;
+                case Shape.Plus: Rotated(Centered(p, Mathf.Clamp(size * 1.2f, 30, 260)), angle, plusTex, c); break;
+                case Shape.Hexagon: Rotated(Centered(p, Mathf.Clamp(size * 1.2f, 30, 260)), angle, hexTex, c); break;
                 case Shape.Line:
                     for (int i = -3; i <= 3; i++)
                     {
@@ -996,7 +1017,7 @@ namespace SunLoader
                 case Shape.Bar: Fill(new Rect(center.x - size, center.y - size * 0.15f, size * 2, size * 0.3f), c); break;
                 case Shape.Effect: Text(new Rect(center.x - 80, center.y - 12, 160, 24), "(no hitbox)", Dim); break;
                 default:
-                    var t = info.Shape switch { Shape.Circle => circleTex, Shape.Ring => ringTex, Shape.Triangle => triTex, Shape.Spikes => starTex, _ => null };
+                    var t = info.Shape switch { Shape.Circle => circleTex, Shape.Ring => ringTex, Shape.Triangle => triTex, Shape.Spikes => starTex, Shape.Diamond => diamondTex, Shape.Plus => plusTex, Shape.Hexagon => hexTex, _ => null };
                     if (info.Shape == Shape.Line) DrawShape(fake, center, c);
                     else Tex(Centered(center, size), t ?? Texture2D.whiteTexture, c);
                     break;
@@ -1227,7 +1248,7 @@ namespace SunLoader
             if (p.x < Label)
             {
                 int row = (int)Math.Floor((p.y - tl.y - Ruler + rowScroll) / RowH);
-                if (row >= 0 && row < rows.Count) tool = rows[row];
+                if (row >= 0 && row < rows.Count) { tool = rows[row]; toolShape = null; }
                 return;
             }
             var hit = HitTimeline(p);

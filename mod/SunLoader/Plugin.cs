@@ -15,7 +15,7 @@ namespace SunLoader
     [BepInPlugin("riptid.jsb.sunloader", "Sun Loader", Version)]
     public class Plugin : BasePlugin
     {
-        public const string Version = "0.2.0-alpha";
+        public const string Version = "0.3.0-alpha";
         internal static ManualLogSource Logger;
         // BepInEx\SunLoader\<level>.json replaces that level; dumps\ holds the originals.
         internal static string Root;

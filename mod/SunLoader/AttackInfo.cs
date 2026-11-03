@@ -4,7 +4,7 @@ using System.Text.RegularExpressions;
 
 namespace SunLoader
 {
-    enum Shape { Square, Bar, Circle, Ring, Triangle, Spikes, Line, Effect }
+    enum Shape { Square, Bar, Circle, Ring, Triangle, Spikes, Line, Effect, Diamond, Plus, Hexagon }
 
     // Friendly names, categories, descriptions and editor shapes for the game's attacks.
     // Descriptions come from watching the attacks in the game's levels and from their
@@ -19,6 +19,26 @@ namespace SunLoader
         };
 
         public record Info(string Category, string Description, Shape Shape);
+        public record Preset(string Name, string Type, params (string Key, string Value)[] Params);
+
+        // The Shapes list in the editor: the game's attacks, set up to make a shape.
+        public const string ShapesCategory = "Shapes";
+        public static readonly Preset[] Shapes =
+        {
+            new("Diamond", "SquareCorner", ("rotOffset", "45")),
+            new("Spinning diamond", "SquareCorner", ("rotOffset", "45"), ("rotSpeed", "1")),
+            new("Diamond of spikes", "FxTokyoSkiesDiamond"),
+            new("Orbiting diamond", "FxClashDiamond"),
+            new("Square", "SquareAppearStay"),
+            new("Circle", "BlackHole"),
+            new("Ring", "RingShrink"),
+            new("Triangle", "TriangleShoot"),
+            new("Plus", "fxPlus"),
+            new("Cross", "Laser4"),
+            new("Star burst", "ExplodiongSpikes"),
+            new("Spiky ball", "RoundSpikes"),
+            new("Hexagon line", "HexagonLine"),
+        };
 
         static readonly Dictionary<string, Info> known = new()
         {
@@ -63,7 +83,7 @@ namespace SunLoader
             ["TutorialWallOfSpikes"] = new("Walls & spikes", "A slow wall of spikes from the tutorial.", Shape.Bar),
             ["SawOnRail"] = new("Walls & spikes", "A saw blade that runs along a rail.", Shape.Spikes),
             ["fxPiston"] = new("Walls & spikes", "A piston that punches out.", Shape.Bar),
-            ["fxPlus"] = new("Walls & spikes", "A plus-shaped hazard.", Shape.Spikes),
+            ["fxPlus"] = new("Walls & spikes", "A plus-shaped hazard.", Shape.Plus),
             ["SquareCorner"] = new("Walls & spikes", "A big square that grows from a corner area; can rotate (rotOffset, rotSpeed).", Shape.Square),
             ["ExplodiongSpikes"] = new("Walls & spikes", "Spikes that burst out from a point in a ring (spikes = how many).", Shape.Spikes),
             ["ExplodingSpikesBig"] = new("Walls & spikes", "A big, slow burst of spikes.", Shape.Spikes),
@@ -92,10 +112,10 @@ namespace SunLoader
             ["FxSquareLineRounded"] = new("Patterns & lines", "A line of rounded squares appearing one by one.", Shape.Line),
             ["FxSpectrumBar"] = new("Patterns & lines", "Bars that pulse like an audio spectrum.", Shape.Bar),
             ["FxAvalanche"] = new("Patterns & lines", "A falling avalanche of shapes.", Shape.Line),
-            ["HexagonLine"] = new("Patterns & lines", "A line of hexagons.", Shape.Line),
-            ["FxClashDiamond"] = new("Patterns & lines", "Spiky balls moving in a diamond pattern.", Shape.Spikes),
+            ["HexagonLine"] = new("Patterns & lines", "A line of hexagons.", Shape.Hexagon),
+            ["FxClashDiamond"] = new("Patterns & lines", "Spiky balls moving in a diamond pattern.", Shape.Diamond),
             ["FxClashCannon"] = new("Patterns & lines", "A cannon that fires spiky balls.", Shape.Spikes),
-            ["FxTokyoSkiesDiamond"] = new("Patterns & lines", "Spiky balls moving in a diamond.", Shape.Spikes),
+            ["FxTokyoSkiesDiamond"] = new("Patterns & lines", "Spiky balls moving in a diamond.", Shape.Diamond),
             ["FxChaosgame"] = new("Patterns & lines", "A chaotic fractal pattern of points.", Shape.Line),
 
             // Camera & effects

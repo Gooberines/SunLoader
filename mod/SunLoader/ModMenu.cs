@@ -195,7 +195,7 @@ namespace SunLoader
             var e = Event.current;
             GUI.matrix = Matrix4x4.Scale(new Vector3(scale, scale, 1));
 
-            if (!Open && MainMenuSeen.OnMainMenu)
+            if (!Open && !BossMultiplayerMenu.Open && !MultiplayerWarning.Open && MainMenuSeen.OnMainMenu)
             {
                 // The button: bottom-left of the main menu.
                 // Slanted pink block that kicks on the main menu's beat, like the game's own buttons.

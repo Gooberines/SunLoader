@@ -268,6 +268,15 @@ namespace SunLoader
 
         static void Cancel() { pendingLevel = IntPtr.Zero; Active = null; EditOnStart = false; }
 
+        // A boss played alone doesn't carry into a room (an invite can be accepted during one).
+        public static void OnJoinedLobby()
+        {
+            if (Active == null && pendingLevel == IntPtr.Zero) return;
+            Plugin.Logger.LogInfo($"Bosses: joined a lobby; '{Active?.Name}' is off");
+            Cancel();
+            SetAudioClipPatch.RestoreOriginals();
+        }
+
         // Moves a launch along: once the Playlist screen has settled, tells it to go in game.
         static void UpdateLaunch()
         {
@@ -293,6 +302,7 @@ namespace SunLoader
             if (Active == null && LobbySync.InLobby && LobbySync.Boss is { } lobbyBoss && lobbyBoss.Stage == levelId)
             {
                 Plugin.Logger.LogInfo($"Bosses: playing the lobby's boss '{lobbyBoss.Name}'");
+                EditorGui.Toast($"Now playing '{lobbyBoss.Name}'. Multiplayer bosses don't earn suns.");
                 return lobbyBoss.Path;
             }
             if (Active == null) return null;

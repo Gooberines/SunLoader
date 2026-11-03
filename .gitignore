@@ -1,3 +1,5 @@
+# The multiplayer keys to give out (only their hashes are in the repository)
+keys/
 # Build output
 build/
 dist/
