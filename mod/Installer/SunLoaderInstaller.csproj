@@ -17,8 +17,8 @@
     <Description>Installs BepInEx and the Sun Loader mod loader into Just Shapes &amp; Beats.</Description>
     <Company>Sun Loader</Company>
     <Copyright>Sun Loader</Copyright>
-    <Version>0.3.0-alpha</Version>
-    <FileVersion>0.3.0.0</FileVersion>
+    <Version>0.4.0-alpha</Version>
+    <FileVersion>0.4.0.0</FileVersion>
     <Deterministic>true</Deterministic>
     <DebugType>none</DebugType>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
