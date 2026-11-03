@@ -163,6 +163,69 @@ namespace SunLoader
 
         public static bool IsOwner => Login != null && string.Equals(Repo.Split('/')[0], Login, StringComparison.OrdinalIgnoreCase);
 
+        // ---------- multiplayer keys ----------
+        // Each key belongs to the first GitHub account to claim it. A claim is a comment on one issue
+        // made by the owner: a hash of the key and the commenter's login, so only someone with the
+        // key can claim it, and neither the key nor a claim can be copied from the comment. The
+        // earliest unedited claim wins, so two players claiming at once still gives one owner.
+
+        const string KeyClaimsTitle = "[Sun Loader] Multiplayer key claims";
+        const string KeyClaimOpen = "<!-- sunloader-key-claim v1 ";
+
+        // Claims the key if nobody has yet. done gets its owner, or an error, on a background thread.
+        public static bool ClaimKey(string key, Action<string, string> done)
+        {
+            if (Busy || !SignedIn) return false;
+            Run("Checking your key", async () =>
+            {
+                try
+                {
+                    var issue = await FindKeyClaims();
+                    if (issue == 0) { done(null, "Keys aren't set up on GitHub yet. Tell the owner."); return; }
+                    var owner = await KeyOwner(issue, key);
+                    if (owner == null)
+                    {
+                        await Api(HttpMethod.Post, $"https://api.github.com/repos/{Repo}/issues/{issue}/comments",
+                            new JsonObject { ["body"] = $"Claimed a multiplayer key.\n\n{KeyClaimOpen}{MultiplayerKeys.ClaimToken(key, Login)} -->" });
+                        owner = await KeyOwner(issue, key);
+                    }
+                    done(owner, owner == null ? "GitHub didn't save your claim. Try again." : null);
+                }
+                catch (Exception e) { done(null, e.Message); }
+            });
+            return true;
+        }
+
+        static async Task<int> FindKeyClaims()
+        {
+            var creator = Repo.Split('/')[0];
+            for (int page = 1; page <= 10; page++)
+            {
+                var items = (await Api(HttpMethod.Get, $"https://api.github.com/repos/{Repo}/issues?state=open&creator={creator}&per_page=100&page={page}")).AsArray();
+                foreach (var issue in items)
+                    if ((string)issue["title"] == KeyClaimsTitle && string.Equals((string)issue["user"]?["login"], creator, StringComparison.OrdinalIgnoreCase))
+                        return (int)issue["number"];
+                if (items.Count < 100) break;
+            }
+            return 0;
+        }
+
+        // The account that claimed this key first, or null. Comments come oldest first.
+        static async Task<string> KeyOwner(int issue, string key)
+        {
+            for (int page = 1; page <= 50; page++)
+            {
+                var items = (await Api(HttpMethod.Get, $"https://api.github.com/repos/{Repo}/issues/{issue}/comments?per_page=100&page={page}")).AsArray();
+                foreach (var c in items)
+                {
+                    if ((string)c["created_at"] != (string)c["updated_at"] || (string)c["user"]?["login"] is not { } author) continue;
+                    if (((string)c["body"] ?? "").Contains(KeyClaimOpen + MultiplayerKeys.ClaimToken(key, author) + " -->")) return author;
+                }
+                if (items.Count < 100) break;
+            }
+            return null;
+        }
+
         public class Player { public string Name; public int Suns, Beaten; }
         public static volatile List<Player> Leaderboard = new();
         public static int MySuns => Leaderboard.FirstOrDefault(p => p.Name == Login)?.Suns ?? 0;

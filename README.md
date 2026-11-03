@@ -81,7 +81,7 @@ To install by hand instead:
   the boss is sent when the room opens. In a room, **F5** shows the players, changes the boss, and sets whether every
   round plays it or players can vote for another song (it appears under the stage's name). Players need Sun Loader to see
   the custom boss (others get the normal level), and a custom song only plays for players who have the same song file.
-  This needs a key from the owner, entered once in that menu; without one you get the normal levels. Public rooms stay on the normal levels. Nothing beaten online earns suns, and level replacements are ignored online so everyone plays the same attacks.
+  This needs a key from the owner, entered once in that menu while signed in with GitHub. Each key works for one GitHub account (the first to claim it, recorded on an issue in the bosses repository); without one you get the normal levels. Public rooms stay on the normal levels. Nothing beaten online earns suns, and level replacements are ignored online so everyone plays the same attacks.
 - **Level replacements** (F1 in a normal level) are saved to `BepInEx\SunLoader\<level name>.json`. That level plays
   your boss from then on.
 - **Songs** go in `BepInEx\SunLoader\music`.

@@ -49,6 +49,11 @@ namespace SunLoader
                 try { new UI_MainMenu02(MainMenuSeen.Instance).OnChallengeMode(); Open = false; }
                 catch (Exception ex) { Plugin.Logger.LogError("Boss multiplayer: " + ex); Say("The game wouldn't open Challenge: " + ex.Message, true); }
             }
+            if (MultiplayerKeys.TakeMessage(out var isError) is { } result)
+            {
+                Say(result, isError);
+                if (!isError) { keyText = ""; LobbySync.CheckSoon(); }
+            }
             if (!Open) return;
             Cursor.visible = true;
             Cursor.lockState = CursorLockMode.None;
@@ -126,8 +131,8 @@ namespace SunLoader
 
         static void SubmitKey()
         {
-            if (MultiplayerKeys.TryUnlock(keyText)) { keyText = ""; LobbySync.CheckSoon(); Say("Key accepted. Multiplayer is unlocked."); }
-            else Say("That key isn't right. Check it and try again.", true);
+            var error = MultiplayerKeys.Redeem(keyText);
+            if (error != null) Say(error, true); else Say("Checking your key...");
         }
 
         static void DrawLocked(float x, float y, float w)
@@ -135,7 +140,7 @@ namespace SunLoader
             y += 90;
             Theme.Title(new Rect(x, y, w, 60), "ENTER YOUR KEY", Theme.Pink, 46);
             y += 70;
-            EditorGui.Text(new Rect(x, y, w, 60), "Custom bosses in multiplayer need a key. You only have to enter it once. Without one, the game's normal online play still works.", Color.white, 18, wrap: true);
+            EditorGui.Text(new Rect(x, y, w, 60), "Custom bosses in multiplayer need a key. Each key works once, for one GitHub account, so stay signed in to that account. Without one, the game's normal online play still works.", Color.white, 18, wrap: true);
             y += 80;
             var field = new Rect(x, y, w, 64);
             EditorGui.Fill(field, Color.black);
@@ -146,6 +151,13 @@ namespace SunLoader
             y += 84;
             if (EditorGui.Button(new Rect(x, y, 300, 60), "Unlock", "Check this key", color: Theme.Pink)) SubmitKey();
             if (EditorGui.Button(new Rect(x + 320, y, 240, 60), "Paste (Ctrl+V)", "Paste your key from the clipboard")) PasteKey();
+            if (Share.SignedIn) EditorGui.Text(new Rect(x + 580, y + 18, w - 580, 26), "Signed in as " + Share.Login, Dim, 16);
+            else if (EditorGui.Button(new Rect(x + 580, y, 300, 60), "Sign in with GitHub", "Opens the sign-in in the Bosses menu. Come back here afterwards.", color: GreenBtn) && !Share.Busy)
+            {
+                Open = false;
+                if (!BossMenu.Open) BossMenu.Toggle();
+                Share.StartLogin();
+            }
         }
 
         // ---------- left side ----------

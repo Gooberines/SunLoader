@@ -44,6 +44,7 @@ namespace SunLoader
         // Called every frame; looks at the lobby twice a second.
         public static void Update()
         {
+            MultiplayerKeys.Update();
             if (Time.realtimeSinceStartup < nextCheck) return;
             nextCheck = Time.realtimeSinceStartup + 0.5f;
             try { Check(); }
