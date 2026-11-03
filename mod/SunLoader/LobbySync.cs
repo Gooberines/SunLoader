@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json.Nodes;
 using HarmonyLib;
@@ -10,17 +11,21 @@ using Il2CppList = Il2CppSystem.Collections.Generic;
 
 namespace SunLoader
 {
-    // Custom bosses in online multiplayer. The host picks one of their bosses for the lobby;
-    // it's packed into the Steam lobby's data (which Steam sends to every player), and every
-    // player with Sun Loader plays it whenever its stage comes up in that lobby. The stage is
+    // Custom bosses in online multiplayer. The host picks one of their bosses for the lobby. Steam
+    // keeps only about 8 KB of data per lobby, so the lobby just holds the boss's hash: each player
+    // asks the host for that boss over Steam P2P, and every player with Sun Loader
+    // plays it whenever its stage comes up in that lobby. The stage is
     // put in each song vote so it can come up. Online runs never earn suns.
     // Players without Sun Loader just get the stage's normal attacks, so public rooms, which are
     // full of strangers, stay on the normal levels: bosses are for Friends and Community rooms.
     static class LobbySync
     {
         const string Prefix = "sunloader.";
-        const int ChunkSize = 7000;     // Steam allows 8 KB per lobby value
-        const int MaxChunks = 24;
+        const int MaxPacked = 900000;   // Steam sends up to 1 MB at once
+        const int MaxSendTries = 8;
+        const int HashLength = 16;      // Share.Hash
+        const byte RequestPacket = 1, BossPacket = 2;
+        const string SteamRefused = "Steam wouldn't save the lobby data";
 
         // The lobby's boss, saved to bosses\.lobby\, or null.
         public static BossProject Boss;
@@ -36,7 +41,14 @@ namespace SunLoader
         public static List<string> Members = new();
         static ulong lobbyId;
         static string bossHash, badHash, lastError, songToApply;
-        static float nextCheck, lastVoteNote;
+        static float nextCheck, lastVoteNote, nextSendTry, nextRequest, fetchSince = -1;
+        static int sendTries;
+        // The packed boss this player can send to others.
+        static string servePacked, serveHash;
+        static readonly Dictionary<ulong, float> lastSent = new();
+        static bool toldNoBoss;
+        // There's a boss in this room and it's on its way from the host.
+        public static bool Fetching;
         static bool toldAboutPublic, toldAboutKey;
 
         public static string Dir => Path.Combine(CustomBosses.Dir, ".lobby");
@@ -78,6 +90,13 @@ namespace SunLoader
                 lobbyId = l.Id;
                 badHash = null;
                 toldAboutPublic = toldAboutKey = false;
+                sendTries = 0;
+                nextSendTry = 0;
+                nextRequest = 0;
+                fetchSince = -1;
+                toldNoBoss = Fetching = false;
+                servePacked = serveHash = null;
+                lastSent.Clear();
                 CustomBosses.OnJoinedLobby();
             }
             IsHost = l.Owner.IsMe;
@@ -100,24 +119,74 @@ namespace SunLoader
             }
             if (string.IsNullOrEmpty(hash) || !Plugin.LobbyBosses.Value || !MultiplayerKeys.Unlocked)
             {
+                Fetching = false;
                 Clear("no custom boss in this room");
                 return;
             }
-            if (hash == bossHash || hash == badHash) return;
+            ReadPackets(l, hash);
+            if (hash == bossHash || hash == badHash) { Fetching = false; return; }
+            if (IsHost && serveHash == hash) { TryReceive(servePacked, hash); return; }
 
-            // A new boss from the host: put its pieces back together.
-            int.TryParse(l.GetData(Prefix + "chunks"), out var chunks);
-            if (chunks <= 0 || chunks > MaxChunks) return;
-            var sb = new StringBuilder();
-            for (int i = 0; i < chunks; i++)
+            // A new boss from the host: keep asking until it arrives.
+            Fetching = true;
+            var now = Time.realtimeSinceStartup;
+            if (fetchSince < 0) fetchSince = now;
+            if (now >= nextRequest)
             {
-                var part = l.GetData(Prefix + "boss." + i);
-                if (string.IsNullOrEmpty(part)) return;   // not all here yet; try again shortly
-                sb.Append(part);
+                nextRequest = now + 2;
+                if (!SteamP2P.Send(l.Owner.Id, Packet(RequestPacket, hash))) Plugin.Logger.LogWarning("Lobby: Steam wouldn't send the request for the host's boss");
             }
-            var packed = sb.ToString();
-            if (Share.Hash(packed) != hash) return;
-            try { Receive(packed, hash); }
+            if (now - fetchSince > 30 && !toldNoBoss)
+            {
+                toldNoBoss = true;
+                Plugin.Logger.LogWarning("Lobby: no boss from the host after 30 seconds");
+                EditorGui.Toast("The host's boss hasn't arrived yet. Until it does, you'll get the normal levels.");
+            }
+        }
+
+        static byte[] Packet(byte kind, string text)
+        {
+            var bytes = new byte[text.Length + 1];
+            bytes[0] = kind;
+            Encoding.ASCII.GetBytes(text, 0, text.Length, bytes, 1);
+            return bytes;
+        }
+
+        // Answers players asking for the boss, and takes in the boss when it comes from the host.
+        static void ReadPackets(Steamworks.Data.Lobby l, string hash)
+        {
+            for (int i = 0; i < 32 && SteamP2P.Read(out var from, out var data); i++)
+            {
+                if (data.Length < 1) continue;
+                if (data[0] == RequestPacket)
+                {
+                    if (!IsHost || servePacked == null) continue;
+                    var now = Time.realtimeSinceStartup;
+                    if (lastSent.TryGetValue(from, out var sent) && now - sent < 1.5f) continue;
+                    lastSent[from] = now;
+                    if (!SteamP2P.Send(from, Packet(BossPacket, serveHash + servePacked))) Plugin.Logger.LogWarning("Lobby: Steam wouldn't send the boss to a player");
+                }
+                else if (data[0] == BossPacket && from == l.Owner.Id && data.Length > HashLength + 1 && hash != bossHash && hash != badHash)
+                {
+                    var text = Encoding.ASCII.GetString(data, 1, data.Length - 1);
+                    var packed = text[HashLength..];
+                    if (text[..HashLength] == hash && Share.Hash(packed) == hash) TryReceive(packed, hash);
+                }
+            }
+        }
+
+        static void TryReceive(string packed, string hash)
+        {
+            Fetching = false;
+            fetchSince = -1;
+            toldNoBoss = false;
+            try
+            {
+                Receive(packed, hash);
+                // Kept so this player can pass it on if they become the host.
+                servePacked = packed;
+                serveHash = hash;
+            }
             catch (Exception e)
             {
                 // A complete boss that won't read won't get better: don't try again until it changes.
@@ -138,10 +207,15 @@ namespace SunLoader
                 toldAboutPublic = true;
                 return;
             }
+            if (Time.realtimeSinceStartup < nextSendTry) return;
             var picked = Pending;
-            Pending = null;
             string err;
             try { err = Use(picked); } catch (Exception e) { err = e.Message; }
+            // A room that has only just opened may not take data yet, so give it a moment.
+            if (err == SteamRefused && ++sendTries < MaxSendTries) { nextSendTry = Time.realtimeSinceStartup + 2; return; }
+            Pending = null;
+            sendTries = 0;
+            nextSendTry = 0;
             EditorGui.Toast(err == null ? $"'{picked.Name}' sent to your room. {Plugin.BossMultiplayerKey.Value} manages it." : $"Your boss wasn't sent: {err}");
         }
 
@@ -261,17 +335,15 @@ namespace SunLoader
             if (!Plugin.LobbyBosses.Value) return "PlayLobbyBosses is off in Sun Loader's settings";
             var err = Pack(b, out var packed);
             if (err != null) return err;
-            var chunks = (packed.Length + ChunkSize - 1) / ChunkSize;
-            for (int i = 0; i < chunks; i++)
-                if (!l.SetData(Prefix + "boss." + i, packed.Substring(i * ChunkSize, Math.Min(ChunkSize, packed.Length - i * ChunkSize))))
-                    return "Steam wouldn't save the lobby data";
-            l.SetData(Prefix + "chunks", chunks.ToString());
+            var hash = Share.Hash(packed);
+            servePacked = packed;
+            serveHash = hash;
             l.SetData(Prefix + "always", AlwaysPlay ? "1" : "0");
             l.SetData(Prefix + "name", b.Name);
             l.SetData(Prefix + "stage", b.Stage);
-            l.SetData(Prefix + "hash", Share.Hash(packed));   // last, so players only read a complete boss
+            if (!l.SetData(Prefix + "hash", hash)) return SteamRefused;   // last: this tells players there's a boss to ask for
             nextCheck = 0;
-            Plugin.Logger.LogInfo($"Lobby: sent '{b.Name}' to the lobby ({chunks} parts)");
+            Plugin.Logger.LogInfo($"Lobby: '{b.Name}' is the room's boss ({packed.Length} letters)");
             return null;
         }
 
@@ -284,8 +356,8 @@ namespace SunLoader
             var file = JsonNode.Parse(File.ReadAllText(b.Path)).AsObject();
             file.Remove("shared");
             file["name"] = b.Name;
-            packed = Share.Pack(file.ToJsonString());
-            return (packed.Length + ChunkSize - 1) / ChunkSize > MaxChunks ? "This boss is too big to send through the lobby" : null;
+            packed = Share.Pack(file.ToJsonString()).Replace("\n", "");
+            return packed.Length > MaxPacked ? "This boss is too big to send through the lobby" : null;
         }
 
         // For picking a boss before there's a room: says now what would stop it being sent later.
@@ -301,6 +373,39 @@ namespace SunLoader
             if (lobby == null || !lobby.Value.Owner.IsMe) return;
             lobby.Value.SetData(Prefix + "hash", "");
             nextCheck = 0;
+        }
+    }
+
+    // Steam's P2P messages, on a channel of Sun Loader's own, called straight in Steam's library
+    // because they aren't all usable through the game's copy of Facepunch. The game accepts
+    // connections from the players in its room itself.
+    static class SteamP2P
+    {
+        const string Lib = "steam_api64";
+        const int Channel = 7741;
+        const int Reliable = 2;
+        const uint MaxPacket = 1024 * 1024;
+
+        [DllImport(Lib)] static extern IntPtr SteamAPI_SteamNetworking_v006();
+        [DllImport(Lib)][return: MarshalAs(UnmanagedType.I1)] static extern bool SteamAPI_ISteamNetworking_SendP2PPacket(IntPtr self, ulong to, byte[] data, uint size, int sendType, int channel);
+        [DllImport(Lib)][return: MarshalAs(UnmanagedType.I1)] static extern bool SteamAPI_ISteamNetworking_IsP2PPacketAvailable(IntPtr self, out uint size, int channel);
+        [DllImport(Lib)][return: MarshalAs(UnmanagedType.I1)] static extern bool SteamAPI_ISteamNetworking_ReadP2PPacket(IntPtr self, byte[] dest, uint destSize, out uint size, out ulong from, int channel);
+
+        public static bool Send(ulong to, byte[] data) =>
+            SteamAPI_ISteamNetworking_SendP2PPacket(SteamAPI_SteamNetworking_v006(), to, data, (uint)data.Length, Reliable, Channel);
+
+        public static bool Read(out ulong from, out byte[] data)
+        {
+            from = 0;
+            data = null;
+            var net = SteamAPI_SteamNetworking_v006();
+            if (!SteamAPI_ISteamNetworking_IsP2PPacketAvailable(net, out var size, Channel)) return false;
+            // An oversized packet is read too, so it can't block the ones behind it.
+            var buffer = new byte[Math.Min(size, MaxPacket)];
+            if (!SteamAPI_ISteamNetworking_ReadP2PPacket(net, buffer, (uint)buffer.Length, out var got, out from, Channel)) return false;
+            data = size > MaxPacket ? Array.Empty<byte>() : buffer;
+            if (got < data.Length) Array.Resize(ref data, (int)got);
+            return true;
         }
     }
 

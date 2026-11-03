@@ -103,6 +103,36 @@ namespace SunLoader
             GUI.matrix = old;
         }
 
+        // Sun Loader's buttons on the main menu: a column above STORY, lined up with and drawn like
+        // PARTY MODE and EXIT GAME. The game draws its menu 16:9 and letterboxes it, so positions
+        // are measured on that picture (2000 wide) and not on the window. Slot 0 is the top one.
+        // Returns true when it's clicked.
+        public static bool MenuButton(int slot, string name, string hint, Color accent, Event e, float vw)
+        {
+            var gameW = Mathf.Min(vw, 1920f);
+            var unit = gameW / 2000f;
+            var left = (vw - gameW) / 2;
+            var top = (1080f - gameW * 9 / 16) / 2;
+            var h = 70 * unit;
+            var y = top + (15 + slot * 80) * unit;
+            var bar = new Rect(left + 1455 * unit, y, gameW + left - 1455 * unit, h);
+            var hover = bar.Contains(e.mousePosition);
+            var dark = new Color(accent.r * 0.45f, accent.g * 0.45f, accent.b * 0.45f);
+
+            Slanted(new Rect(bar.x - 28 * unit, y, 50 * unit, h), hover ? Color.white : dark, 0.55f);
+            // Longer than the bar, so its slanted right end is past the edge of the picture.
+            Slanted(new Rect(bar.x, y, bar.width + h, h), hover ? accent : new Color(0.02f, 0.02f, 0.03f, 0.95f), 0.55f);
+            // In a window wider than the picture, this covers what would show of that end.
+            if (left > 0) EditorGui.Fill(new Rect(left + gameW, y - 2, h, h + 4), Color.black);
+            var text = hover ? new Color(0.02f, 0.02f, 0.03f) : Color.white;
+            EditorGui.Text(new Rect(left + 1524 * unit, y + 12 * unit, 300 * unit, h), name, text, (int)(32 * unit));
+            EditorGui.Text(new Rect(left + 1700 * unit, y + 24 * unit, 290 * unit, h), hint, hover ? text : new Color(1, 1, 1, 0.55f), (int)(18 * unit));
+
+            if (e.type != EventType.MouseDown || e.button != 0 || !hover) return false;
+            e.Use();
+            return true;
+        }
+
         // Big title text, bumped by the beat.
         public static void Title(Rect r, string text, Color c, int size = 34)
         {

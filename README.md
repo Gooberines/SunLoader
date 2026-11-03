@@ -17,7 +17,7 @@ A mod loader and in-game boss editor for **Just Shapes & Beats** (Steam, Windows
   levels**): beat them from the Playlist to earn their suns.
 - **Boss Multiplayer menu:** a **MULTIPLAYER** button on the main menu (or **F5**) to play custom bosses with other
   people. The host picks a boss, opens a Friends or Community room through Challenge, and everyone in the room with Sun Loader plays it. It's
-  sent through the Steam lobby, so nobody has to download it. Online runs don't earn suns.
+  sent over Steam from the host, so nobody has to download it. Online runs don't earn suns.
 - **Boss editor:** press **F1** in any level to place attacks on the game screen, set their timing and settings,
   preview them live, and save your own boss over that level.
 - **Mod menu:** a **MODS** button on the main menu (or **F2** anywhere) lists DLL mods, loads them on the spot or at

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using HarmonyLib;
 using UnityEngine;
 
 namespace SunLoader
@@ -49,6 +50,7 @@ namespace SunLoader
                 try { new UI_MainMenu02(MainMenuSeen.Instance).OnChallengeMode(); Open = false; }
                 catch (Exception ex) { Plugin.Logger.LogError("Boss multiplayer: " + ex); Say("The game wouldn't open Challenge: " + ex.Message, true); }
             }
+            UpdateGuide();
             if (MultiplayerKeys.TakeMessage(out var isError) is { } result)
             {
                 Say(result, isError);
@@ -65,7 +67,9 @@ namespace SunLoader
             GUI.matrix = Matrix4x4.Scale(new Vector3(scale, scale, 1));
             if (!Open)
             {
-                if (!BossMenu.Open && !ModMenu.Open && !MultiplayerWarning.Open && MainMenuSeen.OnMainMenu) MainMenuButton(e);
+                if (!BossMenu.Open && !ModMenu.Open && !MultiplayerWarning.Open && MainMenuSeen.OnMainMenu
+                    && Theme.MenuButton(2, "MULTIPLAYER", (MultiplayerKeys.Unlocked ? "Custom bosses" : "Needs a key") + $" · {Plugin.BossMultiplayerKey.Value}", Theme.Pink, e, vw)) Toggle();
+                if (!BossMenu.Open && !ModMenu.Open) DrawGuide(vw);
                 return;
             }
             if (e.type == EventType.KeyDown && e.keyCode == KeyCode.Escape) { e.Use(); Open = false; return; }
@@ -93,19 +97,6 @@ namespace SunLoader
             if (LobbySync.InLobby && LobbySync.PublicRoom && LobbySync.Boss == null) DrawPublic(right);
             else if (!LobbySync.InLobby || LobbySync.IsHost) DrawBosses(right);
             else DrawGuest(right);
-        }
-
-        static void MainMenuButton(Event e)
-        {
-            var b = new Rect(532, 950, 300, 70);
-            var hover = b.Contains(e.mousePosition);
-            var kick = Theme.Pulse * 6;
-            var block = new Rect(b.x - kick / 2, b.y - kick / 2, b.width + kick, b.height + kick);
-            Theme.Slanted(new Rect(block.x + 6, block.y + 6, block.width, block.height), new Color(0, 0, 0, 0.5f), 0.3f);
-            Theme.Slanted(block, hover ? Color.white : Theme.Pink, 0.3f);
-            Theme.Title(new Rect(b.x + 26, b.y + 6, 270, 44), "MULTIPLAYER", hover ? Theme.Pink : new Color(0.02f, 0.02f, 0.03f), 32);
-            EditorGui.Text(new Rect(b.x + 28, b.y + 44, 270, 22), (MultiplayerKeys.Unlocked ? "CUSTOM BOSSES" : "NEEDS A KEY") + $" · {Plugin.BossMultiplayerKey.Value}", hover ? Theme.PinkDark : new Color(0, 0, 0, 0.75f), 12);
-            if (e.type == EventType.MouseDown && e.button == 0 && hover) { e.Use(); Toggle(); }
         }
 
         // ---------- the key ----------
@@ -166,26 +157,89 @@ namespace SunLoader
         {
             Theme.Slanted(r, Panel, 0.01f);
             float x = r.x + 22, y = r.y + 18, w = r.width - 44;
-            Theme.Title(new Rect(x, y, w, 40), "HOST A ROOM", Theme.Cyan, 28);
-            y += 52;
-            EditorGui.Text(new Rect(x, y, w, 120), "1. Pick a boss from the list.\n2. Go to Challenge and open a Friends or Community room.\n3. Your boss goes to everyone in the room by itself. Press " + Plugin.BossMultiplayerKey.Value + " there to manage it.", Color.white, 16, wrap: true);
-            y += 130;
             var picked = LobbySync.Pending;
-            EditorGui.Text(new Rect(x, y, w, 26), picked != null ? $"Hosting with: {picked.Name}" : "No boss picked yet", picked != null ? Green : Dim, 16);
-            y += 38;
-            var canGo = MainMenuSeen.OnMainMenu && SafeRead.IsObjectOf<UI_MainMenu02>(MainMenuSeen.Instance);
-            if (EditorGui.Button(new Rect(x, y, w, 60), "Go to Challenge", "Open the game's Challenge screen", color: canGo ? Theme.Pink : RowHover))
+            Theme.Title(new Rect(x, y, w, 40), "HOST A ROOM", Theme.Cyan, 28);
+            y += 48;
+            y = Step(x, y, w, 1, picked != null ? $"Boss picked: {picked.Name}" : "Pick a boss from the list on the right.", picked != null, picked == null, 40);
+            y = Step(x, y, w, 2, "Press Go to Challenge below.", false, picked != null, 40);
+            y = Step(x, y, w, 3, "There, choose FRIENDS or COMMUNITY and make a room. Don't choose ONLINE: public rooms play the normal levels.", false, false, 88);
+            EditorGui.Text(new Rect(x, y, w, 44), $"Your boss then goes to everyone by itself. Press {Plugin.BossMultiplayerKey.Value} in the room to manage it.", Dim, 14, wrap: true);
+            y += 50;
+            if (EditorGui.Button(new Rect(x, y, w, 56), picked != null ? "Go to Challenge" : "Pick a boss first", "Open the game's Challenge screen", color: picked != null ? Theme.Pink : RowHover))
             {
-                if (!canGo) { Say("Go back to the main menu first.", true); return; }
-                goToChallenge = true;
+                if (picked == null) Say("Pick a boss from the list first.", true);
+                else GoToChallenge(Guide.Host);
                 return;
             }
-            y += 92;
+            y += 76;
             Theme.Title(new Rect(x, y, w, 40), "JOIN A ROOM", Theme.Cyan, 28);
-            y += 52;
-            EditorGui.Text(new Rect(x, y, w, 110), "Accept a friend's Steam invite, or find their room under Challenge. The host's boss reaches you by itself. You don't need to download it, but a custom song only plays if you have the same file.", Color.white, 16, wrap: true);
-            y += 120;
-            EditorGui.Text(new Rect(x, y, w, 90), "Everyone needs Sun Loader to see the boss. Players without it get the stage's normal attacks.", Dim, 14, wrap: true);
+            y += 48;
+            EditorGui.Text(new Rect(x, y, w, 90), "Accept a friend's Steam invite, or find their room under Challenge. Their boss reaches you by itself. A custom song only plays if you have the same file.", Color.white, 15, wrap: true);
+            y += 94;
+            if (EditorGui.Button(new Rect(x, y, w, 46), "Find a room in Challenge", "Open the game's Challenge screen")) { GoToChallenge(Guide.Join); return; }
+            y += 54;
+            EditorGui.Text(new Rect(x, y, w, 44), "Players without Sun Loader get the stage's normal attacks.", Dim, 14, wrap: true);
+        }
+
+        // One numbered step: green when it's done, pink when it's the one to do next.
+        static float Step(float x, float y, float w, int number, string text, bool done, bool next, float height)
+        {
+            EditorGui.Fill(new Rect(x, y, 34, 34), done ? GreenBtn : next ? Theme.Pink : Row);
+            Theme.Title(new Rect(x + 10, y + 1, 24, 32), number.ToString(), Color.white, 22);
+            EditorGui.Text(new Rect(x + 46, y + 4, w - 46, height), text, done ? Green : next ? Color.white : Dim, 16, wrap: true);
+            return y + height;
+        }
+
+        // ---------- directions on the Challenge screen ----------
+
+        enum Guide { None, Host, Join }
+        static Guide guide;
+        static float guideSince;
+        // Friends or Community was chosen on the Challenge screen, so the room list is next.
+        internal static bool RoomModeChosen;
+
+        // From the main menu it opens Challenge. Already on Challenge, it only closes this menu.
+        static void GoToChallenge(Guide why)
+        {
+            var onChallenge = ChallengeSeen.OnChallenge;
+            if (!onChallenge && !(MainMenuSeen.OnMainMenu && SafeRead.IsObjectOf<UI_MainMenu02>(MainMenuSeen.Instance)))
+            {
+                Say("Go back to the main menu first.", true);
+                return;
+            }
+            guide = why;
+            guideSince = Time.realtimeSinceStartup;
+            RoomModeChosen = false;
+            if (onChallenge) Open = false; else goToChallenge = true;
+        }
+
+        // Directions stay until you're in a room or back on the main menu.
+        static void UpdateGuide()
+        {
+            if (guide == Guide.None) return;
+            var backOnMain = MainMenuSeen.OnMainMenu && !goToChallenge && Time.realtimeSinceStartup - guideSince > 3;
+            if (LobbySync.InLobby || backOnMain) { guide = Guide.None; RoomModeChosen = false; }
+        }
+
+        // Drawn over the Challenge screen. It takes no clicks, so the game's buttons still work.
+        static void DrawGuide(float vw)
+        {
+            if (!ChallengeSeen.OnChallenge || LobbySync.InLobby || MultiplayerWarning.Open) return;
+            var mode = guide != Guide.None ? guide : LobbySync.Pending != null && MultiplayerKeys.Unlocked ? Guide.Host : Guide.None;
+            if (mode == Guide.None) return;
+            var hosting = mode == Guide.Host;
+            var title = !RoomModeChosen ? "CHOOSE FRIENDS OR COMMUNITY"
+                : hosting ? "NOW MAKE YOUR ROOM" : "NOW PICK YOUR FRIEND'S ROOM";
+            var boss = LobbySync.Pending?.Name;
+            var text = !RoomModeChosen
+                ? (hosting ? "Custom bosses only work there. ONLINE is public and plays the normal levels." : "Your friend's room is listed under whichever one they opened it in.")
+                : hosting ? $"Choose a difficulty and open a room. '{boss}' goes to everyone as soon as it's open."
+                : "Their boss reaches you by itself when you join.";
+            var r = new Rect(vw / 2 - 520, 18, 1040, 104);
+            EditorGui.Fill(r, new Color(0.02f, 0.02f, 0.03f, 0.92f));
+            EditorGui.Fill(new Rect(r.x, r.yMax - 4, r.width, 4), Theme.Pink);
+            Theme.Title(new Rect(r.x + 24, r.y + 6, r.width - 48, 50), title, Theme.Pink, 36);
+            EditorGui.Text(new Rect(r.x + 26, r.y + 60, r.width - 52, 30), text, Color.white, 18);
         }
 
         static void DrawRoom(Rect r)
@@ -247,9 +301,10 @@ namespace SunLoader
         static void DrawGuest(Rect r)
         {
             var boss = LobbySync.Boss;
-            Theme.Title(new Rect(r.x, r.y + 60, r.width, 50), boss != null ? boss.Name : "WAITING FOR THE HOST", Color.white, 34);
+            Theme.Title(new Rect(r.x, r.y + 60, r.width, 50), boss != null ? boss.Name : LobbySync.Fetching ? "GETTING THE BOSS" : "WAITING FOR THE HOST", Color.white, 34);
             EditorGui.Text(new Rect(r.x, r.y + 120, r.width, 60), boss != null
                 ? "You have this boss and you're ready. It goes away when you leave the room."
+                : LobbySync.Fetching ? "The host's boss is on its way. Until it arrives, you'd get the normal levels."
                 : !Plugin.LobbyBosses.Value ? "PlayLobbyBosses is off in Sun Loader's settings, so you'll get the normal levels."
                 : "The host hasn't picked a custom boss, so the room plays the normal levels.", Dim, 16, wrap: true);
         }
@@ -304,6 +359,49 @@ namespace SunLoader
             try { err = LobbySync.Use(b); } catch (Exception e) { err = e.Message; }
             if (err != null) Say(err, true);
             else Say($"'{b.Name}' is the room's boss." + (b.Music != null ? " Players without the same song file hear the stage's song." : ""));
+        }
+    }
+
+    // Knows when the Challenge screen is up and which way the player went from it, for the directions.
+    // These native methods can be folded with other objects' identical ones, so only the real screen counts.
+    [HarmonyPatch]
+    static class ChallengeSeen
+    {
+        static int lastFrame = -100;
+
+        public static bool OnChallenge => Time.frameCount - lastFrame < 5;
+
+        static bool Real(UI_MainMenu02_Challenge menu) => SafeRead.IsObjectOf<UI_MainMenu02_Challenge>(menu.Pointer);
+
+        [HarmonyPostfix, HarmonyPatch(typeof(UI_MainMenu02_Challenge), nameof(UI_MainMenu02_Challenge.update))]
+        static void Update(UI_MainMenu02_Challenge __instance)
+        {
+            if (Real(__instance)) lastFrame = Time.frameCount;
+        }
+
+        // While the warning is up the game hasn't really gone there yet; it comes back here once accepted.
+        [HarmonyPostfix, HarmonyPatch(typeof(UI_MainMenu02_Challenge), nameof(UI_MainMenu02_Challenge.onFriends))]
+        static void Friends(UI_MainMenu02_Challenge __instance)
+        {
+            if (Real(__instance) && !MultiplayerWarning.Open) BossMultiplayerMenu.RoomModeChosen = true;
+        }
+
+        [HarmonyPostfix, HarmonyPatch(typeof(UI_MainMenu02_Challenge), nameof(UI_MainMenu02_Challenge.openCommunityRoomToLoading))]
+        static void Community(UI_MainMenu02_Challenge __instance)
+        {
+            if (Real(__instance) && !MultiplayerWarning.Open) BossMultiplayerMenu.RoomModeChosen = true;
+        }
+
+        [HarmonyPostfix, HarmonyPatch(typeof(UI_MainMenu02_Challenge), nameof(UI_MainMenu02_Challenge.closeRoomSelector))]
+        static void ClosedRooms(UI_MainMenu02_Challenge __instance)
+        {
+            if (Real(__instance)) BossMultiplayerMenu.RoomModeChosen = false;
+        }
+
+        [HarmonyPostfix, HarmonyPatch(typeof(UI_MainMenu02_Challenge), nameof(UI_MainMenu02_Challenge.closeCommunityRoomSelector))]
+        static void ClosedCommunity(UI_MainMenu02_Challenge __instance)
+        {
+            if (Real(__instance)) BossMultiplayerMenu.RoomModeChosen = false;
         }
     }
 }

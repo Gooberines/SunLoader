@@ -83,7 +83,7 @@ namespace SunLoader
             var e = Event.current;
             GUI.matrix = Matrix4x4.Scale(new Vector3(scale, scale, 1));
 
-            if (!Open && !ModMenu.Open && !BossMultiplayerMenu.Open && !MultiplayerWarning.Open && MainMenuSeen.OnMainMenu) MainMenuButton(e);
+            if (!Open && !ModMenu.Open && !BossMultiplayerMenu.Open && !MultiplayerWarning.Open && MainMenuSeen.OnMainMenu && Theme.MenuButton(1, "BOSSES", $"Make your own · {Plugin.BossMenuKey.Value}", Theme.Cyan, e, vw)) Toggle();
             if (!Open) return;
             if (e.type == EventType.KeyDown && Keys(e)) return;
 
@@ -139,22 +139,6 @@ namespace SunLoader
             else if (screen == Screen.Online) DrawOnline(r, x, y, w);
             else if (screen == Screen.Suns) DrawSuns(r, x, y, w);
             else DrawList(r, x, y, w);
-        }
-
-        // ---------- main menu button ----------
-
-        static void MainMenuButton(Event e)
-        {
-            // Next to the MODS button, same style: a slanted block that kicks on the beat.
-            var b = new Rect(282, 950, 240, 70);
-            var hover = b.Contains(e.mousePosition);
-            var kick = Theme.Pulse * 6;
-            var block = new Rect(b.x - kick / 2, b.y - kick / 2, b.width + kick, b.height + kick);
-            Theme.Slanted(new Rect(block.x + 6, block.y + 6, block.width, block.height), new Color(0, 0, 0, 0.5f), 0.3f);
-            Theme.Slanted(block, hover ? Color.white : Theme.Cyan, 0.3f);
-            Theme.Title(new Rect(b.x + 26, b.y + 6, 210, 44), "BOSSES", hover ? Theme.Pink : new Color(0.02f, 0.02f, 0.03f), 32);
-            EditorGui.Text(new Rect(b.x + 28, b.y + 44, 210, 22), $"MAKE YOUR OWN · {Plugin.BossMenuKey.Value}", hover ? Theme.PinkDark : new Color(0, 0, 0, 0.75f), 12);
-            if (e.type == EventType.MouseDown && e.button == 0 && hover) { e.Use(); Toggle(); }
         }
 
         // ---------- bans and appeals ----------

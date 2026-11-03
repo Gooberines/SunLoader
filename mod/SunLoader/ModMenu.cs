@@ -197,17 +197,7 @@ namespace SunLoader
 
             if (!Open && !BossMultiplayerMenu.Open && !MultiplayerWarning.Open && MainMenuSeen.OnMainMenu)
             {
-                // The button: bottom-left of the main menu.
-                // Slanted pink block that kicks on the main menu's beat, like the game's own buttons.
-                var b = new Rect(48, 950, 210, 70);
-                var hover = b.Contains(e.mousePosition);
-                var kick = Theme.Pulse * 6;
-                var block = new Rect(b.x - kick / 2, b.y - kick / 2, b.width + kick, b.height + kick);
-                Theme.Slanted(new Rect(block.x + 6, block.y + 6, block.width, block.height), new Color(0, 0, 0, 0.5f), 0.3f);   // shadow
-                Theme.Slanted(block, hover ? Color.white : Theme.Pink, 0.3f);
-                Theme.Title(new Rect(b.x + 26, b.y + 6, 180, 44), "MODS", hover ? Theme.Pink : Color.white, 32);
-                EditorGui.Text(new Rect(b.x + 28, b.y + 44, 180, 22), $"SUN LOADER · {Plugin.ModMenuKey.Value}", hover ? Theme.PinkDark : new Color(1, 1, 1, 0.8f), 12);
-                if (e.type == EventType.MouseDown && e.button == 0 && hover) { e.Use(); Toggle(); }
+                if (Theme.MenuButton(0, "MODS", $"Sun Loader · {Plugin.ModMenuKey.Value}", Theme.Pink, e, vw)) Toggle();
             }
             if (!Open) return;
 
